@@ -1,0 +1,40 @@
+template:
+  - sensor:
+
+# комбинированный текст текущей/целевой t хотэнда
+    - name: "iot_7_th_str"
+      # friendly_name: "Хотэнд температура"
+      icon: mdi:printer-3d-nozzle-heat
+      state: >-
+        {% set th = (states('sensor.iot_7_th')|float(0.0))|round(2) %}
+        {% set tht = (state_attr('sensor.iot_7_th', 'Target_t')|float(0.0))|round(2) %}
+        {{- th }}°C / {{ tht }}°C
+
+# комбинированный текст текущей/целевой t стола
+    - name: "iot_7_tb_str"
+      # friendly_name: "Стол температура"
+      icon: mdi:radiator
+      state: >-
+        {% set tb = (states('sensor.iot_7_tb')|float(0.0))|round(2) %}
+        {% set tbt = (state_attr('sensor.iot_7_tb', 'Target_t')|float(0.0))|round(2) %}
+        {{- tb }}°C / {{ tbt }}°C
+
+# сенсор уровня Rx сигнала WiFi
+# строка unit_of_measurement: "dBm" делает этот сенсор для Home Assistant полноценным измерителем уровня сигнала.
+# иконка будет автоматически менять количество полосок в зависимости от числового значения.
+# device_class: signal_strength работает по следующей сетке значений:
+# 4 полоски (mdi:wifi-strength-4): от -50 дБм и выше (идеальный сигнал).
+# 3 полоски (mdi:wifi-strength-3): от -66 дБм до -51 дБм (хороший сигнал).
+# 2 полоски (mdi:wifi-strength-2): от -78 дБм до -67 дБм (средний сигнал).
+# 1 полоска (mdi:wifi-strength-1): от -89 дБм до -79 дБм (слабый сигнал).
+# Восклицательный знак / пустой контур (mdi:wifi-strength-outline): -90 дБм и хуже (критический уровень).
+    - name: "iot_7_rssi"
+      device_class: signal_strength
+      unit_of_measurement: "dBm"
+      state: >-
+        {% set rssi_raw = state_attr('number.iot_7_u', 'RSSI') %}
+        {% if rssi_raw is not none %}
+          {{ rssi_raw | replace(' dBm', '') | int }}
+        {% else %}
+          unknown
+        {% endif %}

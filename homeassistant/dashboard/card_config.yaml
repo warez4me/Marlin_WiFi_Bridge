@@ -1,0 +1,37 @@
+type: custom:marlin-move-control-card
+device_id: IoT_7
+accumulate_delay: 1500
+max_accumulate_limit: 60
+temp_presets:
+  - h: 215
+    b: 60
+  - h: 230
+    b: 75
+  - h: 240
+    b: 100
+  - h: 240
+    b: 0
+  - h: 0
+    b: 70
+macro_buttons:
+  - name: Steppers Off
+    gcode: M84
+    mode: pulse
+  - name: Fan 100%
+    gcode: M106 S255
+    mode: loop
+  - name: Fan Off
+    gcode: M107
+    mode: pulse
+  - name: Extrude 10μμ
+    gcode: |
+      G91
+      G1 E10 F100
+      G90
+    mode: loop
+  - name: All OFF
+    gcode: |
+      M104 S0
+      M140 S0
+      M107
+    mode: pulse
