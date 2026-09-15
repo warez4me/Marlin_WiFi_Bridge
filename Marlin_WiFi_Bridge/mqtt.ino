@@ -683,8 +683,10 @@ void mqttLoop() {
       fmt_sec = now / 1000;                                   // переводим в секунды
       uint32_t hr = fmt_sec / 3600; fmt_sec %= 3600;
       uint32_t min = fmt_sec / 60; fmt_sec %= 60;
-      int qState = ((pubState >= HB_IDLE) && (pubState <= PUB_WAIT))? pubState: PUB_UNKNOWN;
-      if (((bridgeState == SYS_OTA) || (bridgeState == SYS_OTA_END)) && (pubState == HB_UPLOAD)) qState = PUB_OTA;
+      int gState;
+      if (bridgeState == SYS_WAIT_OTA) gState = PUB_OTA_MODE;
+       else if ((bridgeState == SYS_OTA) || (bridgeState == SYS_OTA_END)) gState = PUB_OTA_UP;
+       else gState = ((pubState >= HB_IDLE) && (pubState <= PUB_WAIT))? pubState: PUB_UNKNOWN;
       if ((now - timeMQTTCtrl) >= mqttBusyTime) socket.mqttCtrl_ID = 0; // "забываем" ID после истечения mqttBusyTime
       // gData.progress - прогресс загрузки/печати вычисляется при обновлении в gAnswer()
       if ((gData.pubArea & 0xFFFF0000) != 0x02200000) {       // пока в младших 2-х байтах нет сохраненного индекса
@@ -692,13 +694,13 @@ void mqttLoop() {
         const char* fNameStr = (*socket.fName)? socket.fName : fl2chr(PSTR("No file selected"));
         jsonLen = snprintf_P((char*)packet, NET_DATA_MAX - 3, 
                     PSTR("{\"g\":\"%S\",\"u\":%lu,\"uf\":\"%02lu:%02lu:%02lu\",\"rssi\":%ld,\"p\":%lu,\"pf\":\"%s\"}"),
-                    (const char*)pgm_read_ptr(&pubState_id[qState]), socket.mqttCtrl_ID, hr, min, fmt_sec, WiFi.RSSI(),
+                    (const char*)pgm_read_ptr(&pubState_id[gState]), socket.mqttCtrl_ID, hr, min, fmt_sec, WiFi.RSSI(),
                     gData.progress, fNameStr); }
        else {                                                 // если есть сохраненный индекс начала ответа на M115
         gData.pubArea &= 0x0000FFFF;                          // выделяем сохраненный индекс начала json строки "area:{.."
         jsonLen = snprintf_P((char*)packet, NET_DATA_MAX - 3, 
                     PSTR("{\"g\":\"%S\",\"u\":%lu,\"uf\":\"%02lu:%02lu:%02lu\",\"rssi\":%ld,\"p\":%lu,\"dim\":\"{%s}\"}"),
-                    (const char*)pgm_read_ptr(&pubState_id[qState]), socket.mqttCtrl_ID, hr, min, fmt_sec, WiFi.RSSI(),
+                    (const char*)pgm_read_ptr(&pubState_id[gState]), socket.mqttCtrl_ID, hr, min, fmt_sec, WiFi.RSSI(),
                     gData.progress, &gAnswer_buf[gData.pubArea]);
         gAnswer_idx = anchorIdx = gData.pubArea; gData.pubArea = 0x03300000; // восстанавливаем индексы, ставим флаг "M115 отработано"
         if (cmdMode) cmdMode -= 1; }                          // восстановление опроса параметров

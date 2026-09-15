@@ -15,6 +15,7 @@
 void onOTAStart() {
   netQuePut(NULL, 0, (char*)PSTR("L:,OTA FW update. Just wait..\n"));  // Сообщение в лог всем WS клиентам
   bridgeState = SYS_OTA;    // переключаем систему в полностью OTA-dedicated режим
+  pubProgress = true; timeProgress = millis() - 50; // "срочная" публикация "OTA_UPDATE"
 }
 
 void onOTAProgress(uint32_t current, uint32_t total) {

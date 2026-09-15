@@ -167,11 +167,13 @@ struct Config {
                               // без имени файла для фиксации всеми клиентами состояния ошибки
 #define HB_WAIT           2   // код состояния, который передается в сообщении HeartBeat
                               // без имени файла для фиксации всеми клиентами состояния ожидания
+/*=== расширение диапазона состояний системы для публикуемых наименований через сенсор IoT_7_U ===*/
 #define PUB_ERROR         4   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_ERROR
 #define PUB_WAIT          5   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_WAIT
-#define PUB_OTA           6   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_UPLOAD в процессе OTA
+#define PUB_OTA_MODE      6   // индекс имени состояния MQTT сенсора IoT_7_U, для SYS_WAIT_OTA
+#define PUB_OTA_UP        7   // индекс имени состояния MQTT сенсора IoT_7_U, для SYS_OTA & SYS_OTA_END
 
-#define PUB_UNKNOWN (PUB_OTA + 1) // общий код состояния MQTT сенсора IoT_7_U вне границ [HB_IDLE..PUB_AP]
+#define PUB_UNKNOWN (PUB_OTA_UP + 1) // общий код состояния MQTT сенсора IoT_7_U вне границ [HB_IDLE..PUB_WAIT]
 /*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 //#define POLL_TIME        40   // * 0.125сек. = 5 сек интервал опроса состояния принтера

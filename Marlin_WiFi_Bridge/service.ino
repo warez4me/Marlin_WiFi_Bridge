@@ -628,6 +628,7 @@ bool myBridgeCmd(char* msg, size_t length) {
       if (!setOTA()) break;                         // проверяем размеры файла/памяти, даем приглашение
       netQuePut(NULL, 0, (char*)PSTR("L:OTA : 120 sec waiting for upload.\n"));
       bridgeState = SYS_WAIT_OTA; otaTimer = 121;   // отсчет 2 мин ожидания начала OTA, потом - сброс
+      pubProgress = true; timeProgress = millis() - 50; // "срочная" публикация "OTA_MODE"
       break; }
     case ID_HELP: {
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR(
