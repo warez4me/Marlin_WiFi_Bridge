@@ -508,9 +508,9 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       if (typeof d != "string" || d.length < 16) return;
       pt = d.slice(0, 13);          // "12:34:56.789:" метка времени помещения пакета в буфер
       for (let hb of d.slice(13).split("\n")) {
-        //// формат Heartbeat - S:RndNum:State[:ActiveID[:Progress:Mode:File]]
-        let h = hb.split(":"), hc = h[0], v = hb.slice(2); // hc - это "S", "N" или "L"
-        if (hc == "S") {
+        //// формат Heartbeat - H:RndNum:State[:ActiveID[:Progress:Mode:File]]
+        let h = hb.split(":"), hc = h[0], v = hb.slice(2); // hc - это "H", "N" или "L"
+        if (hc == "H") {
               // vvvvvv ### debug vvvvv
               //let hl = "";
               //if (v != hS | tm != hm) {
@@ -551,8 +551,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
             // --- ТАКТОВЫЙ ГИСТЕРЕЗИС И ОТПРАВКА СИНХРОПАКЕТА ВРЕМЕНИ ---
             // --- СЧЕТЧИК ТАКТОВ НА ОСНОВЕ HB (стартовая пауза 4 сек, затем повтор каждые 5 минут) ---
             // --- При условии : либо мы активист и нет BIN передачи, либо сейчас нет активиста ---
-            if (tt++ == 4) (Z > 7 ? sc < 2 : !sid) && S("T:" + Math.floor(Date.now() / 1000 - new Date().getTimezoneOffset() * 60));
-            ; // Даем синхронизацию времени
+            if (tt++ == 4) (Z > 7 ? sc < 2 : !sid) && S("T:" + Math.floor(Date.now() / 1000 - new Date().getTimezoneOffset() * 60)); // Даем синхронизацию времени
             tt > 303 && (tt = 4);               // (304 - 4) - 1 = ровно 300 секунд (5 минут) между синхропакетами
             UX();                               // отрисовка
           }

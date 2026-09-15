@@ -14,9 +14,6 @@
 
 #pragma once
 
-// Объединяем системные макросы в единую константу времени сборки
-const char COMPILE_TIMESTAMP[] PROGMEM = __DATE__ " " __TIME__;
-
 uint32_t parseRC;
 //int32_t callMark = -1;
 
@@ -170,9 +167,11 @@ struct Config {
                               // без имени файла для фиксации всеми клиентами состояния ошибки
 #define HB_WAIT           2   // код состояния, который передается в сообщении HeartBeat
                               // без имени файла для фиксации всеми клиентами состояния ожидания
-#define PUB_ERROR         4   // код состояния MQTT сенсора IoT_7_U, соответствующий HB_ERROR
-#define PUB_WAIT          5   // код состояния MQTT сенсора IoT_7_U, соответствующий HB_WAIT
-#define PUB_UNKNOWN (PUB_WAIT + 1) // общий код состояния MQTT сенсора IoT_7_U вне границ [HB_IDLE..PUB_WAIT]
+#define PUB_ERROR         4   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_ERROR
+#define PUB_WAIT          5   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_WAIT
+#define PUB_OTA           6   // индекс имени состояния MQTT сенсора IoT_7_U, для HB_UPLOAD в процессе OTA
+
+#define PUB_UNKNOWN (PUB_OTA + 1) // общий код состояния MQTT сенсора IoT_7_U вне границ [HB_IDLE..PUB_AP]
 /*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 //#define POLL_TIME        40   // * 0.125сек. = 5 сек интервал опроса состояния принтера

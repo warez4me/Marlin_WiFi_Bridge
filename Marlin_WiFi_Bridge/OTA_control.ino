@@ -13,9 +13,6 @@
  */
 
 void onOTAStart() {
-  //uartWxStop = false;
-  //WITH_FLAG_OFF(UART_SEND, (uart_w((char*)PSTR("M117 OTA Update...\n"))));  // Сообщаем на LCD принтера
-  //uartWxStop = true;
   netQuePut(NULL, 0, (char*)PSTR("L:,OTA FW update. Just wait..\n"));  // Сообщение в лог всем WS клиентам
   bridgeState = SYS_OTA;    // переключаем систему в полностью OTA-dedicated режим
 }

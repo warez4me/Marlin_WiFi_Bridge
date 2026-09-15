@@ -317,9 +317,10 @@ Open your Arduino IDE, navigate to the **Tools** menu, and apply the exact param
 * **VTables:** `Flash`
 
 #### 3. First-Time Wired Flashing Process
-1. Connect your ESP8266 module to your computer using a reliable USB cable (for dev boards) or an external USB-to-TTL UART serial adapter (for bare modules).
-2. If compiling for a bare module, pull `GPIO0` down to `GND` (via your switch or jumper) and trigger a **hardware reset** (either by cycling the system power or simply pressing and releasing your dedicated **Reset button**) to force the chip into **UART Bootloader Mode**.
-3. Compile the sketch inside Arduino IDE and upload the firmware.
+1. Download the repository files to your local disk, open the Arduino IDE, and open the project from the 📁 `Marlin_WiFi_Bridge/` folder.
+2. Connect your ESP8266 module to your computer using a reliable USB cable (for dev boards) or an external USB-to-TTL UART serial adapter (for bare modules).
+3. If compiling for a bare module, pull `GPIO0` down to `GND` (via your switch or jumper) and trigger a **hardware reset** (either by cycling the system power or simply pressing and releasing your dedicated **Reset button**) to force the chip into **UART Bootloader Mode**.
+4. Compile the sketch inside Arduino IDE and upload the firmware.
 
 <a id="ota-updates"></a>
 
@@ -345,7 +346,7 @@ Located in your repository under 📁 `addendum/software/`. This script executes
 
 * **Pipeline Execution Condition:** The repository already contains pre-compiled, production-ready version-aligned variants of `js_frontend_gzip.h` and `cfg_page_gzip.h`. Therefore, running the Python scripts is **fully optional** and strictly required only if you have manually modified the source code within `js_frontend.h` or `cfg_page.h`. You only need to process the specific file that was altered.
 
-* **Pipeline Execution Sequence:** If you made changes to the source web templates *(located under 📁 `arduino_sourcecode/`)*, process the modified file inside your terminal using the Python builder engine:
+* **Pipeline Execution Sequence:** If you made changes to the source web templates *(located under 📁 `Marlin_WiFi_Bridge/`)*, process the modified file inside your terminal using the Python builder engine:
   ```
   # Run ONLY for the file that has been modified:
   python3 zipper.py js_frontend.h --hard
@@ -582,11 +583,13 @@ As mentioned above, the UI features a raw control prompt input strip. Simple com
 
 - `(?)` : Print SD card management utilities help.
 
+- `(V)` : Print the current and maximum allowed firmware file size, program version, and compilation date.
+
 - `(I)` : Print active client connection status profiles.
 
 - `(P)` : Dual-purpose. Outputs the last boot crash/reset flags at startup. Later morphs into real-time operational statistic reports (RAM usage, data latency metrics, Marlin answers parsing speed, buffers usage metrics).
 
-  - `(P)0` / `(P)1` : Switch between brief and comprehensive upload telemetry output.
+  - `(P)0` / `(P)1` : Switch between brief and comprehensive upload telemetry output. This toggle also enables or disables the verbose mode for notification messages from Marlin during file upload and printing.
 
 - `(X)` : Terminate connections and launch local AP config server (keeps existing settings in EEPROM).
 

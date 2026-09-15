@@ -198,15 +198,17 @@ void sta2ap(const char* msg) {
   if (mqttSockData.sockState != MQTT_SOCKET_DISCONNECTED)
     mqttDisconnect();         // Жестко закрываем сокет MQTT, очищая буферы
   if (msg) {
+    do {                      // создаем фиктивного активиста
+      socket.clGroup_ID += 1; } while (!(socket.clGroup_ID));
     int32_t len = 0;
     for (int i = 0; i < 3; i++)
-      len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("S:%u:%d:%d:%d\n"),
-                        sessionID, HB_WAIT, socket.clGroup_ID + 1,  // +(сбросить активиста)
+      len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("H:%u:%d:%d:%d\n"),
+                        sessionID, HB_WAIT, socket.clGroup_ID,  // +(сбросить текущего активиста)
                         ((ctrl & CLIENT_LOG) >> 4));
     len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("%S"), msg);
     netQuePut(packet, -len);  // urgent HB
-    netQueSend();
-    delay(50); }
+    netQueSend(); }
+  delay(50);
   webSocket.disconnect();     // Закрываем WS соединения
   wsMap = 0; socket.clGroup_ID = 0; // очищаем данные о подключенных WS клиентах
   delay(1);

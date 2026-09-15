@@ -30,7 +30,7 @@ bool getNum(uint32_t* val, char** srcPtr, uint32_t maxVal, bool skipSp) {
 void doReboot(bool sidReset) {
   int32_t len = 0;
   for (int i = 0; i < 3; i++)
-    len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("S:%u:%d:%d:%d\n"),
+    len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("H:%u:%d:%d:%d\n"),
                       sessionID,
                       ((errCode == ERR_NO_ERRORS)? HB_WAIT: HB_ERROR),
                       socket.clGroup_ID + !!(sidReset),  // +(сбросить активиста)
@@ -668,11 +668,11 @@ bool myBridgeCmd(char* msg, size_t length) {
       len = snprintf_P((char*)packet, NET_DATA_MAX, 
                         PSTR( "L:,Flash (Real/Map)  : %uK / %uK\n"     // Физический/замапленный размер памяти в КБ
                               "L:,Size (Sketch/OTA) : %uK / %uK\n"     // Текущий вес прошивки/максимальный размер OTA .BIN в КБ
-                              "L:,Compiled at: %S\n"                   // Вывод даты сборки в лог интерфейса
+                              "L:,%S compiled at: %S\n"                // Вывод даты сборки в лог интерфейса
                               "L:,(c) warez4me 2026\n"),
                               realFlash, (ESP.getFlashChipSize() >> 10),
                               (ESP.getSketchSize() >> 10), (realFlash > 1024) ? (1016 - 4) : (464 - 4),
-                              COMPILE_TIMESTAMP);
+                              _VERSION_, COMPILE_TIMESTAMP);
       netQuePut_cid(packet, len, socket.clWS_ID);
       break; }
     case ID_NONE:

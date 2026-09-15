@@ -230,7 +230,7 @@ const pub_data_t pub_data[DISCOVERY_COUNT] PROGMEM __attribute__((aligned(4))) =
 bool pubTB = false, pubXYZ = false, pubProgress = false;
 uint32_t timeTB = 0, timeXYZ = 0, timeProgress = 0, timeMQTTCtrl = 0, mqttBusyTime = 10000;
 
-int pubState = HB_IDLE;       // defined in WiFi_BFT.h
+int pubState = HB_IDLE;       // defined in "WiFi_BFT.h"
 // Строковые имена публикуемых состояний системы
 const char state_idle[]   PROGMEM =  "IDLE";
 const char state_upload[] PROGMEM =  "UPLOAD";
@@ -238,8 +238,9 @@ const char state_ready[]  PROGMEM =  "READY";
 const char state_print[]  PROGMEM =  "PRINT";
 const char state_error[]  PROGMEM =  "ERROR";
 const char state_wait[]   PROGMEM =  "WAIT";
+const char state_ota[]    PROGMEM =  "OTA MODE";
 const char state_unknown[] PROGMEM = "UNKNOWN";
 // Таблица указателей на имена публикуемых состояний системы
 const char* const pubState_id[] PROGMEM __attribute__((aligned(4))) = {
-    state_idle, state_upload, state_ready, state_print, state_error, state_wait, state_unknown
+    state_idle, state_upload, state_ready, state_print, state_error, state_wait, state_ota, state_unknown
   };

@@ -36,6 +36,7 @@
 #include "gcode.h"
 #include "functions.h"
 #include "stats_monitor.h"
+#include "version.h"
 
 ///////  MQTT config strings  ///////
 #include "MQTT_topics.h"
@@ -390,7 +391,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             br_announce(ANN_START_ILLEGAL, num, socket.clWS_ID, annID);
             len = 0; fListScanned = FLIST_NOT_SCANNED;
             for (int i = 0; i < 3; i++)
-              len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("S:0:%d:%d:%d\n"),
+              len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("H:0:%d:%d:%d\n"),
                                 HB_ERROR,
                                 (socket.clGroup_ID & 0xFFFF)?               // сброс активиста, если он является источником
                                   ((socket.clGroup_ID & 0xFFFF) + !!(num == socket.clWS_ID)): 0,
@@ -1180,10 +1181,10 @@ void checkErrors() {
 }
 
 void heartbeat(bool forced) {
-  // полный формат сообщения S:sessionID:s-Код:ActiveID:Ctrl:Прогресс:Режим_ASCII_BFT:Имя_файла
+  // полный формат сообщения H:sessionID:s-Код:ActiveID:Ctrl:Прогресс:Режим_ASCII_BFT:Имя_файла
   //                                     s-Код = HB_IDLE,HB_UPLOAD,HB_READY,HB_PRINT
   // в момент запуска передачи файла присоединяется запрос на получение 1-го чанка
-  // короткий формат         S:sessionID:е-Код:ActiveID:Ctrl
+  // короткий формат         H:sessionID:е-Код:ActiveID:Ctrl
   //                                     е-Код = HB_IDLE,HB_ERROR,HB_WAIT,HB_PRINT
   // HB_ERROR (==HB_UPLOAD) без имени файла -> состояние UX клиентов "ERROR"
   // HB_WAIT  (==HB_READY)  без имени файла -> состояние UX клиентов "WAIT"
@@ -1225,14 +1226,14 @@ void heartbeat(bool forced) {
   uint32_t hbTime = millis(), pgs = 0;
   if ((errCast > 0) || lastCast ||
       (((socket.fSize == 0) || (socket.fName[0] == '\0')) && (hbState != HB_PRINT))) {        // формируем короткий формат HeartBeat
-    len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("S:%u:%d:%d:%d\n"),
+    len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("H:%u:%d:%d:%d\n"),
                                   sessionID, hbState, (socket.clGroup_ID & 0xFFFF), hb_Ctrl);
     if (hbState != HB_PRINT) socket.progress = 0; }
    else {                                                                                     // формируем полный формат HeartBeat
     pgs  = ((socket.fSize)? ((uint32_t)((uint64_t)(socket.progress * 100) / socket.fSize)): 0);
     uint32_t f_bin = !!(((bridgeState >= SYS_PRE_UPLD) && (bridgeState <= SYS_TRANSFER)) || (bridgeState == SYS_OTA));
     hb_Ctrl |= (f_bin << 1);                          // бит разрешения передавать бинарные чанки и контроля BIN-watchdog у клиента
-    len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("S:%u:%d:%d:%d:%d:%d:%s\n"),
+    len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("H:%u:%d:%d:%d:%d:%d:%s\n"),
                                                   (sessionID + ((*socket.fName)? 0: 1)),      // для обновления UX, когда SYS_PRINT получает имя из notification
                                                   hbState, (socket.clGroup_ID & 0xFFFF), hb_Ctrl, ((useBFT)? 1: 0), pgs, socket.fName);
     static uint32_t ctrlMem = 0;

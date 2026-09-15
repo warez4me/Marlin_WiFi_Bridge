@@ -547,7 +547,7 @@ void mqttSocketHandler() {
             mqttDisconnect(false);                                      // запрос перерегистрации всех сущностей Home Assistant, сокет не закрываем
             break;
           case '3':
-            gData.pubArea = 0;                                          // запрос на генерацию M115 для получения габаритов принтера
+            gData.pubArea = 0; validGcode = false;                      // запрос на генерацию M115 для получения габаритов принтера
             break;
           case '2':                                                     // экстренный сброс всех активных состояний принтера
             if ((bridgeState == SYS_WAIT_MOVE) || (bridgeState == SYS_WAIT_TEMP)) {
@@ -684,6 +684,7 @@ void mqttLoop() {
       uint32_t hr = fmt_sec / 3600; fmt_sec %= 3600;
       uint32_t min = fmt_sec / 60; fmt_sec %= 60;
       int qState = ((pubState >= HB_IDLE) && (pubState <= PUB_WAIT))? pubState: PUB_UNKNOWN;
+      if (((bridgeState == SYS_OTA) || (bridgeState == SYS_OTA_END)) && (pubState == HB_UPLOAD)) qState = PUB_OTA;
       if ((now - timeMQTTCtrl) >= mqttBusyTime) socket.mqttCtrl_ID = 0; // "забываем" ID после истечения mqttBusyTime
       // gData.progress - прогресс загрузки/печати вычисляется при обновлении в gAnswer()
       if ((gData.pubArea & 0xFFFF0000) != 0x02200000) {       // пока в младших 2-х байтах нет сохраненного индекса
@@ -719,7 +720,8 @@ void mqttLoop() {
      else if ((ctrl & MQTT_PUB) && (jsonLen >= 256)) {
       jsonLen = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:mqttPub msgSize %d\n"), jsonLen);
       netQuePut_cid(packet, jsonLen, socket.clWS_ID); }
-    if ((fmt_sec) && (bridgeState == SYS_OTA_END)) doReboot();  // перезагрузка после OTA и публикации прогресса 100%
+    // для OTA - перезагрузка после публикаци системного статуса и прогресса 100%
+    if ((fmt_sec) && (bridgeState == SYS_OTA_END)) doReboot();
     return; // Уступаем квант времени Marlin и WebSockets
     } // if (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED)
   /*--- 3.2 механизм DISCOVERY ---*/

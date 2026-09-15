@@ -1,4 +1,4 @@
-﻿/* marlin-move-control-card.js_v21.4 */
+﻿/* marlin-move-control-card.js_v22.0.0 */
 class PrinterControlCard extends HTMLElement {
   setConfig(config) {
     this.mqtt_prefix = "marlin_bridge";
@@ -17,7 +17,8 @@ class PrinterControlCard extends HTMLElement {
     this.targetCoords = { X: null, Y: null, Z: null };
     this._motionEndTime = null;
     this._showBarTimeout = null;
-    this.softEndstopsEnabled = true; 
+    this.softEndstopsEnabled = true;
+    this._dimensionsInterval = null; 
     // Параметры накопления кликов джойстика
     this._accumulateTimeout = null;
     this._accumulatedDist = 0;
@@ -306,7 +307,7 @@ class PrinterControlCard extends HTMLElement {
 
   /* МАТРИЧНЫЙ ДИСПЕТЧЕР БЛОКИРОВОК (Центральный узел глобальной логики) */
   _toggleButtons() {
-    const cardRoot = this.shadowRoot || this; // Безопасный поиск корня карточки
+    const cardRoot = this.shadowRoot || this; 
     if (!cardRoot) return;
   
     const gObj = this._hass.states['text.' + this.entity_id_prefix + '_g'];
@@ -314,23 +315,17 @@ class PrinterControlCard extends HTMLElement {
     const isServerBusy = !isOffline && gObj.state !== 'IDLE' && gObj.state !== 'READY';
     const noLimits     = !gObj || !gObj.attributes || !gObj.attributes.dimensions;
     
-    // Читаем датчик семафора сессии (u).
     const uObj = this._hass.states['number.' + this.entity_id_prefix + '_u'];
-    // Получаем текущий активный ID с сервера
     const currentActiveSid = uObj ? parseInt(uObj.state) : 0;
     
-    // КЛЮЧЕВОЕ УСЛОВИЕ САМОБЛОКИРОВКИ: (Сценарий 0)
-    // Если сервер занят (currentActiveSid != 0), но занят НЕ нашей карточкой (!= this.card_id) — блокируем пульт!
     const isChannelBusy = (currentActiveSid !== 0 && currentActiveSid !== this.card_id);
   
     if (isOffline || noLimits || isChannelBusy || isServerBusy) {
-      cardRoot.style.pointerEvents = 'auto'; // Сохраняем возможность реагировать на мышь
-      // Блокируем кликабельность и тушим яркость всех кнопок управления
+      cardRoot.style.pointerEvents = 'auto'; 
       this.querySelectorAll('.move-btn, .home-btn, .frame-btn-copy').forEach(btn => {
-        btn.style.pointerEvents = 'none';
-        btn.style.opacity = '0.5';
+        btn.style.setProperty('pointer-events', 'none', 'important');
+        btn.style.setProperty('opacity', '0.5', 'important');
       });
-      // Динамически информируем пользователя через заголовок карточки
       const title = this.querySelector('.card-title');
       if (title) {
         if (isOffline) title.innerText          = 'Printer is OFFLINE';
@@ -338,70 +333,99 @@ class PrinterControlCard extends HTMLElement {
         else if (isChannelBusy) title.innerText = 'Line is busy...';
         else title.innerText                    = 'Getting dimensions...';
       }
-      return; // Выходим, не выполняя остальные сценарии, не пуская пользователя к кнопкам
+      return; 
     }
   
-    // Возвращаем стандартный заголовок, если всё успешно инициализировалось
     const title = this.querySelector('.card-title');
     if (title) title.innerText = 'Marlin-WiFi ready';
 
-    // Отдаем управление остальным сценариям
-
-    // Сценарий 1: Активен эксклюзивный макропроцесс
     let activeLoopMacro = this.querySelector('#macro-wrapper button[data-is-active-macro="true"][data-macro-mode="loop"]');
     if (activeLoopMacro) {
       cardRoot.style.pointerEvents = 'auto';
       this.querySelectorAll('.move-btn, .home-btn, .frame-btn-copy').forEach(btn => {
         if (btn !== activeLoopMacro) {
-          btn.style.pointerEvents = 'none';
-          btn.style.opacity = '0.3';
+          btn.style.setProperty('pointer-events', 'none', 'important');
+          btn.style.setProperty('opacity', '0.3', 'important');
         } else {
-          btn.style.pointerEvents = 'auto';
-          btn.style.opacity = '1';
+          btn.style.removeProperty('pointer-events');
+          btn.style.removeProperty('opacity');
         }
       });
       return;
     }
 
-    // Сценарий 2: Идет физическое движение осей (Джойстик, Парковка или Ожидание координат на выключенном принтере)
-    // ИСПРАВЛЕНО: Полное глушение всей карты через pointer-events с исключением для бампера отмены
     if (this.isMoving && !this._isAccumulating) {
       const cancelBar = this.querySelector('#cancel-move-bar');
-      // Разрешаем клики по самой карте, чтобы поймать нажатие на отмену
       cardRoot.style.pointerEvents = 'auto'; 
       this.querySelectorAll('.move-btn, .home-btn, .frame-btn-copy').forEach(btn => {
         if (btn !== cancelBar) {
-          btn.style.pointerEvents = 'none'; // Аппаратно отключаем мышь для всех "посторонних" кнопок
-          btn.style.opacity = '0.3';        // Обесцвечиваем их на 70%
+          btn.style.setProperty('pointer-events', 'none', 'important'); 
+          btn.style.setProperty('opacity', '0.3', 'important');        
         } else {
-          btn.style.pointerEvents = 'auto'; // Оставляем бампер отмены на 100% кликабельным
-          btn.style.opacity = '1';
+          btn.style.removeProperty('pointer-events');
+          btn.style.removeProperty('opacity');
         }
       });
       return;
     }
 
-    // Сценарий 3: Идет сессия накопления кликов джойстика
     if (this._isAccumulating) {
       cardRoot.style.pointerEvents = 'auto';
       this.querySelectorAll('.move-btn, .home-btn, .frame-btn-copy').forEach(btn => {
         if (btn.id !== this._activeAccumulateAxis) {
-          btn.style.pointerEvents = 'none';
-          btn.style.opacity = '0.4';        
+          btn.style.setProperty('pointer-events', 'none', 'important');
+          btn.style.setProperty('opacity', '0.4', 'important');        
         } else {
-          btn.style.pointerEvents = 'auto';
-          btn.style.opacity = '1';
+          btn.style.removeProperty('pointer-events');
+          btn.style.removeProperty('opacity');
         }
       });
       return;
     }
 
-    // Сценарий 4: SYS_IDLE (Принтер полностью свободен)
+    // Сценарий 4: SYS_IDLE
     cardRoot.style.pointerEvents = 'auto';
+    
     this.querySelectorAll('.move-btn, .home-btn, .frame-btn-copy').forEach(btn => {
-      btn.style.pointerEvents = 'auto';
-      btn.style.opacity = '1'; 
+      btn.style.removeProperty('pointer-events');
+      btn.style.removeProperty('opacity');
     });
+
+    if (this.softEndstopsEnabled) {
+      const limits = gObj.attributes.dimensions.area;
+      const xObj = this._hass.states['sensor.' + this.entity_id_prefix + '_x'];
+      const yObj = this._hass.states['sensor.' + this.entity_id_prefix + '_y'];
+      const zObj = this._hass.states['sensor.' + this.entity_id_prefix + '_z'];
+
+      if (xObj && yObj && zObj) {
+        const valX = parseFloat(xObj.state);
+        const valY = parseFloat(yObj.state);
+        const valZ = parseFloat(zObj.state);
+
+        const blockRules = {
+          'move-x-plus':       (valX >= limits.full.max.x),
+          'move-x-minus':      (valX <= limits.full.min.x),
+          'move-y-plus':       (valY >= limits.full.max.y),
+          'move-y-minus':      (valY <= limits.full.min.y),
+          'move-z-plus':       (valZ >= limits.full.max.z),
+          'move-z-minus':      (valZ <= limits.full.min.z),
+          'move-x-minus-y-plus':  (valX <= limits.full.min.x || valY >= limits.full.max.y),
+          'move-x-plus-y-plus':   (valX >= limits.full.max.x || valY >= limits.full.max.y),
+          'move-x-minus-y-minus': (valX <= limits.full.min.x || valY <= limits.full.min.y),
+          'move-x-plus-y-minus':  (valX >= limits.full.max.x || valY <= limits.full.min.y)
+        };
+
+        for (const [btnId, shouldBlock] of Object.entries(blockRules)) {
+          if (shouldBlock) {
+            const btn = this.querySelector('#' + btnId);
+            if (btn) {
+              btn.style.setProperty('pointer-events', 'auto', 'important'); // Клик разрешен для анимации подсветки
+              btn.style.setProperty('opacity', '0.25', 'important'); 
+            }
+          }
+        }
+      }
+    }
   }
 
   _attachEventListeners() {
@@ -555,10 +579,19 @@ class PrinterControlCard extends HTMLElement {
     });
 
     // автоматическая проверка и получение габаритов от принтера при необходимости
-    setInterval(() => {
-      const titleEl = this.querySelector('.card-title');
-      // Если карточка прямо сейчас визуально ждет габариты — шлем запрос
-      if (titleEl && titleEl.innerText === 'Getting dimensions...') {
+    // ОЧИЩАЕМ СТАРЫЙ ТАЙМЕР ПЕРЕД ПЕРЕЗАПУСКОМ (Защита от зомби-процессов)
+    if (this._dimensionsInterval) clearInterval(this._dimensionsInterval);
+
+    // Умный опрос габаритов без привязки к innerText
+    this._dimensionsInterval = setInterval(() => {
+      if (!this._hass) return;
+
+      const gObj = this._hass.states['text.' + this.entity_id_prefix + '_g'];
+      const isBridgeOnline = gObj && gObj.state !== 'OFFLINE' && gObj.state !== 'unavailable';
+      const dimensionsMissing = !gObj || !gObj.attributes || !gObj.attributes.dimensions;
+
+      // Шлем '3' только если мост онлайн, но габаритов еще физически нет в HA
+      if (isBridgeOnline && dimensionsMissing) {
         this._publishMQTT(this.mqtt_prefix + '/' + this.device_id + '_U/cmd', '3');
       }
     }, 10000);
@@ -618,19 +651,76 @@ class PrinterControlCard extends HTMLElement {
     if (!button) return;
 
     button.addEventListener('click', () => {
-      // Проверяем состояние только в момент физического клика по кнопке!
       const gObj = this._hass.states['text.' + this.entity_id_prefix + '_g'];
       if (!gObj || gObj.state === 'OFFLINE' || !gObj.attributes.dimensions) return;
 
       if (this.isMoving && !this._isAccumulating) return;
       if (this._isAccumulating && this._activeAccumulateAxis !== elementId) return;
 
+      const currentGObj = this._hass.states['text.' + this.entity_id_prefix + '_g'];
+      let limits = {
+        full: { min: { x: -100.0, y: -100.0, z: 0.0 }, max: { x: 400.0, y: 400.0, z: 400.0 } },
+        work: { min: { x: -100.0, y: -100.0, z: 0.0 }, max: { x: 400.0, y: 400.0, z: 400.0 } }
+      };
+      
+      if (currentGObj && currentGObj.attributes && currentGObj.attributes.dimensions) {
+        limits = currentGObj.attributes.dimensions.area;
+      }
+
+      if (this.softEndstopsEnabled) {
+        let allowedDist = this._accumulatedDist + this.currentStep;
+        let isBlockedTotal = false;
+
+        for (const [axisName, localDirection] of Object.entries(axesConfig)) {
+          const axisKey = axisName.toLowerCase(); 
+          const axisEntityId = 'sensor.' + this.entity_id_prefix + '_' + axisKey;
+          const axisObj = this._hass.states[axisEntityId];
+          if (!axisObj) continue; 
+
+          const axisVal = parseFloat(axisObj.state);
+          const axisMax = limits.full.max[axisKey]; 
+          const axisMin = limits.full.min[axisKey];
+
+          const isInside = (axisVal >= axisMin && axisVal <= axisMax);
+
+          if (isInside) {
+            let potentialTarget = axisVal + allowedDist * localDirection;
+
+            if (localDirection > 0 && potentialTarget > axisMax) {
+              allowedDist = Math.max(0, axisMax - axisVal);
+            } else if (localDirection < 0 && potentialTarget < axisMin) {
+              allowedDist = Math.max(0, axisVal - axisMin);
+            }
+          } else {
+            const isMovingToHomeZone = (localDirection > 0 && axisVal < axisMin) || (localDirection < 0 && axisVal > axisMax);
+            if (!isMovingToHomeZone) {
+              isBlockedTotal = true; 
+              break;
+            }
+          }
+        }
+
+        if (isBlockedTotal || allowedDist <= 0.001) {
+          return; // Просто прерываем выполнение. Анимация нажатия сработает, но команда не уйдет.
+        }
+
+        this._accumulatedDist = allowedDist;
+      } else {
+        this._accumulatedDist += this.currentStep;
+      }
+
+      if (this._accumulatedDist > this._maxAccumulateLimit) {
+        this._accumulatedDist = this._maxAccumulateLimit;
+      }
+
       this._isAccumulating = true;
       this._activeAccumulateAxis = elementId;
       this._toggleButtons();
 
-      if (this._accumulatedDist + this.currentStep <= this._maxAccumulateLimit) {
-        this._accumulatedDist += this.currentStep;
+      const displayAxisName = Object.keys(axesConfig).join(''); 
+      const softEndstopLabel = this.querySelector('label[for="soft-endstops-chk"]');
+      if (softEndstopLabel) {
+        softEndstopLabel.innerHTML = `Use software endstops <span style="color: var(--accent-color); font-weight: bold; margin-left: 12px; font-family: monospace;">[${displayAxisName} ${this._accumulatedDist.toFixed(1)} mm]</span>`;
       }
 
       if (this._accumulateTimeout) clearTimeout(this._accumulateTimeout);
@@ -638,49 +728,27 @@ class PrinterControlCard extends HTMLElement {
       this._accumulateTimeout = setTimeout(() => {
         const finalDist = this._accumulatedDist;
         this._isAccumulating = false;
-        this.targetCoords = { X: null, Y: null, Z: null };
-        // ОБЪЯВЛЯЕМ И ВЫЧИСЛЯЕМ LIMITS ЗДЕСЬ ДЛЯ СОФТ-ЭНДОСТОПОВ
-        // 1. Инициализируем универсальные сплошные нули для лимитов
-        const currentGObj = this._hass.states['text.' + this.entity_id_prefix + '_g'];
-        let limits = {
-          full: { min: { x: 0.00, y: 0.00, z: 0.00 }, max: { x: 0.00, y: 0.00, z: 0.00 } },
-          work: { min: { x: 0.00, y: 0.00, z: 0.00 }, max: { x: 0.00, y: 0.00, z: 0.00 } }
-        };
         
-        if (currentGObj && currentGObj.attributes && currentGObj.attributes.dimensions) {
-          limits = currentGObj.attributes.dimensions.area;
+        if (softEndstopLabel) {
+          softEndstopLabel.innerText = 'Use software endstops';
         }
-  
-        // 2. ЖЕЛЕЗОБЕТОННЫЙ ПРЕДОХРАНИТЕЛЬ:
-        // Если лимиты всё ещё нулевые (M115 не пришел) — полностью отменяем движение!
-        if (limits.work.max.x === 0.00) {
-          this._resetLockState();
-          return; 
-        }
-  
-        // 3. Начинаем перебор осей
-        Object.keys(axesConfig).forEach(axis => {
-          const entityId = 'sensor.' + this.entity_id_prefix + '_' + axis.toLowerCase();
-          const currentObj = this._hass.states[entityId];
-          if (currentObj) {
-            let currentVal = parseFloat(currentObj.state);
-            let nextVal = currentVal + (finalDist * axesConfig[axis]);
-  
-            // ПРОГРАММНЫЕ КОНЦЕВИКИ (Работают внутри цикла)
-            if (this.softEndstopsEnabled) {
-              const ax = axis.toLowerCase(); // 'x', 'y' или 'z'
-              
-              // Точка перед скобками [ax] НЕ нужна, это динамический ключ
-              const maxLimit = limits.work.max[ax];
-              const minLimit = limits.work.min[ax];
-  
-              if (nextVal > maxLimit) nextVal = maxLimit;
-              if (nextVal < minLimit) nextVal = minLimit;
-            }
-            
-            this.targetCoords[axis] = nextVal; // Присваиваем проверенную координату
+
+        this.targetCoords = { X: null, Y: null, Z: null };
+        let moveParams = '';
+        
+        for (const [axisName, localDirection] of Object.entries(axesConfig)) {
+          const axisKey = axisName.toLowerCase();
+          const axisEntityId = 'sensor.' + this.entity_id_prefix + '_' + axisKey;
+          const axisObj = this._hass.states[axisEntityId];
+          
+          if (axisObj) {
+            const currentVal = parseFloat(axisObj.state);
+            this.targetCoords[axisName] = currentVal + (finalDist * localDirection);
           }
-        });
+          
+          const safeDistance = finalDist * localDirection;
+          moveParams += ' ' + axisName + safeDistance.toFixed(2);
+        }
 
         this._toggleButtons();
         this._startMotionLock();
@@ -699,52 +767,8 @@ class PrinterControlCard extends HTMLElement {
         const durationMs = (finalDist / speedMMPerSec) * 1000;
         this._motionEndTime = Date.now() + durationMs + 200; 
 
-        // Формируем параметры движения на основе уже ОБРЕЗАННЫХ и проверенных координат targetCoords
-        let moveParams = '';
-        let realMoved = false;
-  
-        Object.keys(axesConfig).forEach(axis => {
-          if (this.targetCoords[axis] !== null) {
-            const entityId = 'sensor.' + this.entity_id_prefix + '_' + axis.toLowerCase();
-            const currentObj = this._hass.states[entityId];
-            if (currentObj) {
-              const currentVal = parseFloat(currentObj.state);
-              const ax = axis.toLowerCase(); // 'x', 'y' или 'z'
-              
-              const direction = axesConfig[axis]; // Направление клика: > 0 это в плюс, < 0 это в минус
-  
-              // СТРОГИЙ ИГНОР ПРИ ПРЕВЫШЕНИИ ЛИМИТОВ В ОБЕ СТОРОНЫ:
-              if (this.softEndstopsEnabled) {
-                // 1. Проверка для минуса: мы уже в минусе и жмем "минус"
-                const ignoreMinus = (direction < 0 && currentVal <= limits.work.min[ax]);
-                // 2. Проверка для плюса: мы уже переехали плюс и жмем "плюс"
-                const ignorePlus = (direction > 0 && currentVal >= limits.work.max[ax]);
-  
-                if (ignoreMinus || ignorePlus) {
-                  this.targetCoords[axis] = currentVal; // Сбрасываем цель на текущую точку, чтобы не везти обратно
-                  return; // Полный игнор, выходим из обработки этой оси
-                }
-              }
-  
-              // Вычисляем дистанцию
-              const safeDistance = this.targetCoords[axis] - currentVal;
-              
-              if (Math.abs(safeDistance) > 0.01) {
-                moveParams += ' ' + axis + safeDistance.toFixed(2);
-                realMoved = true;
-              }
-            }
-          }
-        });
-  
-        // Отправляем G-код только если движение физически разрешено софт-эндостопами
-        if (realMoved) {
-          const gcode = 'G91\nG1' + moveParams + ' F' + feedrate + '\nG90\n;mid=' + this.card_id + ':HAM2\n';
-          this._publishMQTT(this.mqtt_prefix + '/' + this.device_id + '_G/cmd', gcode);
-        } else {
-          // Если движение полностью заблокировано концевиком — просто сбрасываем карту в IDLE
-          this._resetLockState();
-        }
+        const gcode = 'G91\nG1' + moveParams + ' F' + feedrate + '\nG90\n;mid=' + this.card_id + ':HAM2\n';
+        this._publishMQTT(this.mqtt_prefix + '/' + this.device_id + '_G/cmd', gcode);
 
         this._accumulatedDist = 0;
         this._activeAccumulateAxis = null;
@@ -766,5 +790,13 @@ class PrinterControlCard extends HTMLElement {
   }
 
   getCardSize() { return 4; }
+
+  // ЭТОТ МЕТОД Автоматически убивает таймер при удалении/перерисовке карточки
+  disconnectedCallback() {
+    if (this._dimensionsInterval) {
+      clearInterval(this._dimensionsInterval);
+      this._dimensionsInterval = null;
+    }
+  }
 }
 customElements.define('marlin-move-control-card', PrinterControlCard);

@@ -120,7 +120,7 @@ void prnFix(int src, bool prnDetected) {
   anchorIdx = gAnswer_idx = 0;
   pubState = ((bridgeState == SYS_PRINT)? HB_PRINT: HB_WAIT);
   len = snprintf_P((char*)packet, NET_DATA_MAX,
-                        PSTR("S:0:%d:%d:%d\nS:0:%d:%d:%d\nS:0:%d:%d:%d\nL:Print process %S\n"),
+                        PSTR("H:0:%d:%d:%d\nH:0:%d:%d:%d\nH:0:%d:%d:%d\nL:Print process %S\n"),
                         HB_WAIT,
                         (socket.clGroup_ID & 0xFFFF) + 1,        // +(сбросить активиста)
                         ((ctrl & CLIENT_LOG) >> 4),
@@ -278,7 +278,7 @@ int fileID(bool nameSearch, uint32_t fIdxSize, bool setPrint) {
 }
 
 int cmpFPath() {
-  int res;
+  int res = -1;                   // отрицательный результат по умолчанию
   // сравниваем с socket длинное имя, а при его отсутствии - короткое имя
   if (sdFile.longName)
     res = -(!!(strcmp((const char*)sdFile.longName, (const char*)socket.fName)));
@@ -286,8 +286,8 @@ int cmpFPath() {
     res = -(!!(strncasecmp((const char*)(sdFile.fInfo + sdFile.pathLen),
                       (const char*)socket.fName,
                       sdFile.shortLen)));
-  if (!(res))                          // имя совпадает с сокетом
-    if (isWrkPath()) res =1;           // path совпадает с рабочим
+  if (!(res))                     // имя совпадает с сокетом, == 0
+    if (isWrkPath()) res = 1;     // +path совпадает с рабочим, == 1
   return res;
 }
 
@@ -1163,18 +1163,18 @@ void getMarlin() {
         if (logMark) logMark = '!';             // если еще нет отладочного маркера, маркируем '!'
         break; }
       case ID_WAIT: {
-        if ((bridgeState != SYS_PRINT) || (ctrl & FULL_STAT))
-          // вывод в лог за исключением случаев, когда идет печать с отключенной подробной статистикой
+        if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
+          // вывод в лог за исключением случаев, когда идет печать/загрузка с отключенной подробной статистикой
           if (logMark == '\xff') logMark = '<';   // маркируем, если это 1й маркер строки
         break; }
       case ID_ECHO: {
-        if ((bridgeState != SYS_PRINT) || (ctrl & FULL_STAT))
-          // вывод в лог за исключением случаев, когда идет печать с отключенной подробной статистикой
+        if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
+          // вывод в лог за исключением случаев, когда идет печать/загрузка с отключенной подробной статистикой
           if (logMark == '\xff') logMark = '<';   // маркируем, если это 1й маркер строки
         break; }
       case ID_ACTION: {
-        if ((bridgeState != SYS_PRINT) || (ctrl & FULL_STAT))
-          // вывод в лог за исключением случаев, когда идет печать с отключенной подробной статистикой
+        if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
+          // вывод в лог за исключением случаев, когда идет печать/загрузка с отключенной подробной статистикой
           if (logMark == '\xff') logMark = '<';   // маркируем, если это 1й маркер строки
         break; }
       case ID_SD_BEGIN:

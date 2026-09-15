@@ -10,7 +10,7 @@ This directory contains the comprehensive frontend and backend ecosystem tailore
 ### 📦 Included Ecosystem Components
 * **`packages/iot_7.yaml`** — An isolated Home Assistant Package containing optimized virtual helper sensors, automated filters, and Jinja2-templated entities (such as streamlined target/current heating layouts and responsive Wi-Fi RSSI signal bar tracking).
 * **`www/marlin-printer-card/marlin-move-control-card.js`** — A native JavaScript Lovelace card implementing a smart incremental joystick, real-time print bed sizing, customizable heating/macro profiles, and built-in anti-race condition locking.
-* **`dashboard/`** — Contains frontend deployment layouts matching the reference screenshot:
+* **`dashboard/`** — Contains frontend deployment layouts matching the reference screenshots:
   * `card_config.yaml` — The explicit configuration block extracted from the custom card visual editor, detailing all available variables, limits, and parameters.
   * `full_view_ui.yaml` — The raw Lovelace view YAML source code for rebuilding the entire dedicated printer control tab.
 
@@ -42,22 +42,31 @@ To avoid configuration fragmentation, all virtual helper entities, template sens
 
 ## 🎛️ Custom Lovelace Card Registration
 
-* ⚠️ **Device ID Alignment:** Ensure that the `device_id:` parameter mapped inside your dashboard card YAML configuration exactly matches the **Device Identifier** token configured during the **Initial Configuration** procedure. Misalignment will prevent the card from acquiring the correct state streams and will make it fully misfunctional.
-
 The card operates as a standalone JavaScript module. To register it :
 
-1. **File Allocation:** Copy `marlin-move-control-card.js` into your server's root web storage under the recommended path, maintaining the mirrored directory structure.
+1. **File Allocation:** Copy `marlin-move-control-card.js` file into your server's root web storage under the recommended path, maintaining the mirrored directory structure.
    * Note that `/config/www/` maps internally to the `/local/` URL prefix.
    * Restart Home Assistant if the `www/` directory was newly created.
-2. **Resource Definition:** Register the asset in your Home Assistant Lovelace resources registry (**Settings ➔ Dashboards ➔ Three dots ➔ Resources**):
-   * **URL:** `/local/marlin-printer-card/marlin-move-control-card.js?v=21.4.0`
+2. **Check the Version:** Open the `marlin-move-control-card.js` file in any text editor and look at the version number declared in the comments at the very beginning of the script.
+3. **Resource Definition:** Navigate to **Settings ➔ Dashboards ➔ Three dots ➔ Resources ➔ Add resource** and edit the registration dialog:
+   * **URL:** `/local/marlin-printer-card/marlin-move-control-card.js?v=21.4.0` *(It is highly recommended to replace `21.4.0` with the actual version number you found inside the script file)*.
    * **Type:** `JavaScript Module`
-3. **Card Configuration (For Existing Tabs):** To inject the card into **already existing tab** on your dashboard, initialize a manual card type on your dashboard and utilize the raw reference settings code provided in `dashboard/card_config.yaml`.
-Remember to align the `device_id` parameter inside it to exactly match your actual system configuration.
-
-4. **UI Customization & Scaling:** The frontend architecture is modular and highly configurable directly within the card YAML code:
+4. **Card Configuration (For Existing Tabs):** To inject the card into **already existing tab** on your dashboard, initialize a manual card type on your dashboard and utilize the raw reference settings code provided in `dashboard/card_config.yaml`.
+   * ⚠️ **Device ID Alignment:** Ensure that the `device_id:` parameter mapped inside your dashboard card YAML configuration exactly matches the **Device Identifier** token configured during the WiFi-UART Bridge **Initial Configuration** procedure. Misalignment will prevent the card from acquiring the correct state streams and will make it fully misfunctional.
+5. **UI Customization & Scaling:** The frontend architecture is modular and highly configurable directly within the card YAML code:
    * **Temperature Quick-Actions:** You can scale the number of temperature preset buttons and modify their individual targets (`h:` for hotend, `b:` for bed) to match your materials workflow.
    * **G-Code Macros:** The layout allows you to freely expand or compress the macro panel matrix. You can modify button names, inject complex multi-line custom G-code routines via the literal block pipe (`|`), and switch the operational execution type using explicit `mode: pulse` (single run) or `mode: loop` (toggle state indicator) triggers.
+
+### 🔄 Future Card Script Updates & Cache Clearing
+Follow these steps:
+
+1. Download an updated version of the `marlin-move-control-card.js` file and replace existing one in the `/config/www/marlin-printer-card/` folder.
+2. **Check the Version number:** declared in the comments at the very beginning of the new file.
+3. **Update HA Resource:** Navigate to **Settings ➔ Dashboards ➔ Three dots ➔ Resources**, select the existing resource line for this card, and open the update dialog.
+4. **Modify the Link:** Change the version suffix at the end of the URL string to match the fresh version (e.g., update `?v=21.4.0` to `?v=22.0.0`) and click **Update**.
+5. **Clear Browser Cache & Reload:** 
+   * **Google Chrome Lifehack:** To quickly force a clean reload without losing other session data, open the developer tools by pressing **F12**, right-click (or long press) the standard browser **Reload** button next to the address bar, and select **"Empty Cache and Hard Reload"**. Once the page refreshes, press **F12** again to close the devtools panel.
+   * For other environments or mobile companion apps, perform a standard manual cache wipe and force-close the application before restarting Home Assistant.
 
 ---
 
@@ -74,3 +83,12 @@ The provided layout file (`dashboard/full_view_ui.yaml`) already includes a dedi
 
 * **URL Endpoint:** For seamless integration inside the Home Assistant view container, always configure that source link using the dedicated sub-path: **`http://<YOUR_ESP_IP>/ha`**
 * **IP Address Management:** To avoid the hassle of editing your dashboard YAML every time your router assigns a new dynamic IP to the bridge, remember to lock the ESP8266 to a **Static IP** via your router's DHCP reservation page. This keeps your embedded layout working seamlessly without manual intervention.
+
+## License & Acknowledgments
+
+Copyright (c) 2026 warez4me. All rights reserved.
+
+This project is open-source software licensed under the **GNU General Public License v3.0 (GPLv3)**. You are free to modify and distribute it, provided that any derivative works also remain open-source under the same license.
+
+### AI Assistance
+* The codebase was fully generated by Generative AI tools based on human feature specifications, architectural requirements, and rigorous output validation.
