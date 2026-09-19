@@ -2,6 +2,20 @@
 
 An ultra-optimized, high-performance software-hardware stack that transforms an ESP8266 into an intelligent industrial terminal for Marlin-based 3D printers.
 
+<p align="center">
+  <table border="0" cellspacing="0" cellpadding="5">
+    <tr valign="top">
+      <td width="50%" align="center">
+        <img src="addendum/screenshots/web_ui.png" width="100%" alt="WiFi-UART Bridge Web UI">
+        <br><i>Mobile Web Interface in action</i>
+      </td>
+      <td width="50%" align="center">
+        <img src="addendum/screenshots/ha_card.png" width="100%" alt="Home Assistant Lovelace Card">
+        <br><i>Home Assistant Card Integration</i>
+      </td>
+    </tr>
+  </table>
+</p>
 
 ## ⚠️ Project Status & Translation Disclaimer
 
@@ -317,7 +331,7 @@ Open your Arduino IDE, navigate to the **Tools** menu, and apply the exact param
 * **VTables:** `Flash`
 
 #### 3. First-Time Wired Flashing Process
-1. Download the repository files to your local disk, open the Arduino IDE, and open the project from the 📁 `Marlin_WiFi_Bridge/` folder.
+1. Download the repository files to your local disk, open the Arduino IDE, and open the project from the [📁 Marlin_WiFi_Bridge/](Marlin_WiFi_Bridge/) folder.
 2. Connect your ESP8266 module to your computer using a reliable USB cable (for dev boards) or an external USB-to-TTL UART serial adapter (for bare modules).
 3. If compiling for a bare module, pull `GPIO0` down to `GND` (via your switch or jumper) and trigger a **hardware reset** (either by cycling the system power or simply pressing and releasing your dedicated **Reset button**) to force the chip into **UART Bootloader Mode**.
 4. Compile the sketch inside Arduino IDE and upload the firmware.
@@ -342,11 +356,11 @@ From this point forward, the bridge natively supports Over-the-Air (OTA) wireles
 To ensure extreme runtime efficiency, zero memory fragmentation, and a compact binary footprint, the server-side web interface pages (`INDEX_HTML` and `CONFIG_HTML`) are aggressively minified, compressed using the Gzip algorithm, and embedded into the C++ source files as byte arrays stored strictly in `PROGMEM`. 
 
 #### 1. The Frontend Compression Engine (`zipper.py`)
-Located in your repository under 📁 `addendum/software/`. This script executes raw HTML/JS code squeezing, stripping comments, redundant spaces, and line breaks before packaging the buffer into a production-ready Gzip header using `EXTREME` mode.
+Located in your repository under [📁 addendum/software/(addendum/software/). This script executes raw HTML/JS code squeezing, stripping comments, redundant spaces, and line breaks before packaging the buffer into a production-ready Gzip header using `EXTREME` mode.
 
 * **Pipeline Execution Condition:** The repository already contains pre-compiled, production-ready version-aligned variants of `js_frontend_gzip.h` and `cfg_page_gzip.h`. Therefore, running the Python scripts is **fully optional** and strictly required only if you have manually modified the source code within `js_frontend.h` or `cfg_page.h`. You only need to process the specific file that was altered.
 
-* **Pipeline Execution Sequence:** If you made changes to the source web templates *(located under 📁 `Marlin_WiFi_Bridge/`)*, process the modified file inside your terminal using the Python builder engine:
+* **Pipeline Execution Sequence:** If you made changes to the source web templates located under [📁 Marlin_WiFi_Bridge/](Marlin_WiFi_Bridge/))*, process the modified file inside your terminal using the Python builder engine:
   ```
   # Run ONLY for the file that has been modified:
   python3 zipper.py js_frontend.h --hard
@@ -373,7 +387,7 @@ The repository includes a customized **`sizes.py`** utility script equipped with
 
 * **Installation Sub-Routine:** 
   1. Locate the modified script in your repository under:
-     📁 `addendum/software/Arduino/sizes.py`
+     [📁 addendum/software/Arduino/](addendum/software/Arduino/)sizes.py
   2. Navigate to your local system Arduino core tools directory (approximate path depending on your Windows user profile name and target ESP8266 core version, tested on **core 3.1.2**):
      `C:\Users\<user_name>\AppData\Local\Arduino15\packages\esp8266\hardware\esp8266\3.1.2\tools\`
   3. Backup your original native compiler script, then copy and overwrite it with the modified `sizes.py` from this repository.
@@ -437,7 +451,7 @@ Ensure the following configuration options are enabled in your Marlin source fil
   #define ADVANCED_OK
   ```
 
-* ➔ **Reference Log:** A complete example of Marlin's response to the `M115` command can be found in the [📁 `addendum/m115_log.md`](addendum/m115_log.md) file. All critical capabilities and parameters required for the stable operation of the WiFi-UART bridge are explicitly marked with an asterisk (`*`).
+* ➔ **Reference Log:** A complete example of Marlin's response to the `M115` command can be found in the [📁 addendum/m115_log.md](addendum/m115_log.md) file. All critical capabilities and parameters required for the stable operation of the WiFi-UART bridge are explicitly marked with an asterisk (`*`).
 
 <p align="right"><a href="#table-of-contents">▲ Back to Top</a></p>
 
@@ -533,11 +547,11 @@ It implements several intelligent UX and safety features:
 Integrating custom frontend cards and managing raw MQTT attributes inside Home Assistant can quickly become complex. To lower the barrier to entry, all advanced configurations, dashboards deployment guides, and helper files are isolated in a dedicated subdirectory of this repository.
 
 #### Pre-Configured YAML Packages
-Instead of forcing you to manually write filters and templates, this project provides a ready-to-use **Home Assistant Package** file (`packages/iot_7.yaml`). By simply dropping this file into your Home Assistant `packages/` directory and registering it inside your `configuration.yaml` file, the system will automatically generate highly optimized virtual helper entities, including:
+Instead of forcing you to manually write filters and templates, this project provides a ready-to-use **Home Assistant Package** file [📁 packages/](packages/)iot_7.yaml. By simply dropping this file into your Home Assistant `packages/` directory and registering it inside your `configuration.yaml` file, the system will automatically generate highly optimized virtual helper entities, including:
 * **Combined Temperature Telemetry:** Formats current and target temperatures into clean, human-readable strings (e.g., `215°C / 215°C`) for streamlined dashboard monitoring.
 * **Intelligent Wi-Fi RSSI Diagnostics:** Strips raw string data and converts telemetry into a standardized `signal_strength` device class sensor (`dBm`). Home Assistant automatically uses this to dynamic-render responsive signal bars on your dashboard icons based on real-time signal degradation zones (from strong `-50 dBm` down to critical `-90 dBm` thresholds).
 
-*For a step-by-step frontend installation walkthrough and complete YAML package deployments, please check the dedicated guide inside the `/homeassistant/` folder.*
+*For a step-by-step frontend installation walkthrough and complete YAML package deployments, please check the dedicated guide inside the [📁 homeassistant/](homeassistant/) folder.*
 
 <p align="right"><a href="#table-of-contents">▲ Back to Top</a></p>
 
