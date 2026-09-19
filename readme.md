@@ -356,11 +356,11 @@ From this point forward, the bridge natively supports Over-the-Air (OTA) wireles
 To ensure extreme runtime efficiency, zero memory fragmentation, and a compact binary footprint, the server-side web interface pages (`INDEX_HTML` and `CONFIG_HTML`) are aggressively minified, compressed using the Gzip algorithm, and embedded into the C++ source files as byte arrays stored strictly in `PROGMEM`. 
 
 #### 1. The Frontend Compression Engine (`zipper.py`)
-Located in your repository under [📁 addendum/software/(addendum/software/). This script executes raw HTML/JS code squeezing, stripping comments, redundant spaces, and line breaks before packaging the buffer into a production-ready Gzip header using `EXTREME` mode.
+Located in your repository under [📁 addendum/software/](addendum/software/). This script executes raw HTML/JS code squeezing, stripping comments, redundant spaces, and line breaks before packaging the buffer into a production-ready Gzip header using `EXTREME` mode.
 
 * **Pipeline Execution Condition:** The repository already contains pre-compiled, production-ready version-aligned variants of `js_frontend_gzip.h` and `cfg_page_gzip.h`. Therefore, running the Python scripts is **fully optional** and strictly required only if you have manually modified the source code within `js_frontend.h` or `cfg_page.h`. You only need to process the specific file that was altered.
 
-* **Pipeline Execution Sequence:** If you made changes to the source web templates located under [📁 Marlin_WiFi_Bridge/](Marlin_WiFi_Bridge/))*, process the modified file inside your terminal using the Python builder engine:
+* **Pipeline Execution Sequence:** If you made changes to the source web templates located under [📁 Marlin_WiFi_Bridge/](Marlin_WiFi_Bridge/), process the modified file inside your terminal using the Python builder engine:
   ```
   # Run ONLY for the file that has been modified:
   python3 zipper.py js_frontend.h --hard
@@ -387,7 +387,7 @@ The repository includes a customized **`sizes.py`** utility script equipped with
 
 * **Installation Sub-Routine:** 
   1. Locate the modified script in your repository under:
-     [📁 addendum/software/Arduino/](addendum/software/Arduino/)sizes.py
+     [📁 addendum/software/Arduino/sizes.py](addendum/software/Arduino/)
   2. Navigate to your local system Arduino core tools directory (approximate path depending on your Windows user profile name and target ESP8266 core version, tested on **core 3.1.2**):
      `C:\Users\<user_name>\AppData\Local\Arduino15\packages\esp8266\hardware\esp8266\3.1.2\tools\`
   3. Backup your original native compiler script, then copy and overwrite it with the modified `sizes.py` from this repository.
@@ -551,7 +551,7 @@ Instead of forcing you to manually write filters and templates, this project pro
 * **Combined Temperature Telemetry:** Formats current and target temperatures into clean, human-readable strings (e.g., `215°C / 215°C`) for streamlined dashboard monitoring.
 * **Intelligent Wi-Fi RSSI Diagnostics:** Strips raw string data and converts telemetry into a standardized `signal_strength` device class sensor (`dBm`). Home Assistant automatically uses this to dynamic-render responsive signal bars on your dashboard icons based on real-time signal degradation zones (from strong `-50 dBm` down to critical `-90 dBm` thresholds).
 
-*For a step-by-step frontend installation walkthrough and complete YAML package deployments, please check the dedicated guide inside the [📁 homeassistant/](homeassistant/) folder.*
+*For a step-by-step frontend installation walkthrough and complete YAML package deployments, please check the [dedicated guide](homeassistant/readme_ha.md).*
 
 <p align="right"><a href="#table-of-contents">▲ Back to Top</a></p>
 
