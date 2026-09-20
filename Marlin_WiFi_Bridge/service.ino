@@ -58,6 +58,7 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
   // - инфо о качестве WiFi Rx сигнала 
   // - инфо о количестве подключенных WS клиентов
   // - инфо о количестве файлов/папок на Sd карте
+  // - инфо для гипотетического случая ошибки стартовой синхронизации с Марлин
   int len = 0;
   time_t now;
   struct tm* timeinfo;
@@ -90,13 +91,13 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
   uint32_t wsConn = pgm_read_dword(wsNumber + wsMap); // &wsNumber[wsMap]
   bool mqttOk = (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED);
   len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("L:,WS:%u connected   MQTT:%S\n"),
-                    wsConn, ((mqttOk)? PSTR("Ok"): PSTR("No connection")));
+                    wsConn, ((mqttOk)? PSTR("Ok"): ((wifiState == WIFI_STATE_STA)? PSTR("No connection"): PSTR("Connecting.."))));
   netQuePut_cid(packet, len, (show_cid & CID_ALL));
   qWiFiIdx = 0;
   if ((bridgeState != SYS_IDLE) && (bridgeState != SYS_PRE_PRINT)) {
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:,SD card: busy [%S]\n"),
                                                         (const char*)pgm_read_ptr(&brStateName[bridgeState]));
-    qWiFiIdx = 1; }
+    qWiFiIdx = !!(bridgeState != SYS_SYNC_ERROR); }
    else if ((anchorIdx) && !fListMode) {
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR( "L:,SD: %u (%u) files, %u folders\n"),
                                                         sdFile.sizeCount, sdFile.maxIdx, sdFile.keepCount);
@@ -107,7 +108,25 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
                                                                   ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
   netQuePut_cid(packet, len, (show_cid & CID_ALL));
   // инфо о текущем выбранном файле выдаём только активисту по команде (I)
-  if ((qWiFiIdx == 2) && (show_cid & 0xFFFF0000)) fileID(true, socket.fSize);//, false);
+  if ((qWiFiIdx == 2) && (show_cid & 0xFFFF0000)) fileID(true, socket.fSize);
+  // инфо для случая ошибки стартовой синхронизации с Марлин
+  if (bridgeState == SYS_SYNC_ERROR)
+    netQuePut(NULL, 0, (char*)PSTR(
+                    "L:!:: SYSTEM LOCKDOWN / SYNC FAIL !\n"
+                    "L:!UART errors detected; printer state unknown.\n"
+                    "L:!Control is locked for safety.\n"
+                    "L:,:: REMEDY: Restart BOTH devices TOGETHER\n"
+                    "L:,OR: power ON the bridge first.\n"
+                    "L:,Then reconnect or click \"Continue\"\n"));
+}
+
+void showIP() {                         // в начале сеанса показываем IP
+  if (fListMode || (wifi_timer <= 0)) return;
+  PowerUp = true;
+  bool txState = uartWxStop; uartWxStop = false;
+  IPAddress ip = WiFi.localIP();
+  size_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M117 IP:%d.%d.%d.%d\n"), ip[0], ip[1], ip[2], ip[3]);
+  uart_w((char*)packet, len, true); uartWxStop = txState;
 }
 
 bool setWrkPath(bool show) {
@@ -170,7 +189,8 @@ int confirmStr(strMem_t* cmdMem, char* msg, size_t length) {
 inline void fListGet(int showBegIdx) {
   sdFile.selName = false; sdFile.selIdx = 0;    // сбрасываем флаги поиска при получении списка файлов
   if (showBegIdx >= 0) sdFile.pageBegIdx = showBegIdx;
-  ok.skip = 1; ok.waiting = false; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
+  ok.skip = 1; ok.waiting = false;
+  sdTimer = SD_CHECK_PERIOD; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
   size_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M21\nM20 L \"%s\"\n"),
                                           ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
   uart_w((char*)packet, len);

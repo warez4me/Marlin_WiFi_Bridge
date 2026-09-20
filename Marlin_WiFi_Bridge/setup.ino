@@ -263,13 +263,16 @@ void syncMarlin() {
               (errCode == ERR_NO_ERRORS)  &&  // после getMarlin() нет ошибок
               srvSync                     &&  // после getMarlin() флаг не сбросился
               ((tNow - pauseStart) < 2500));  // "молчание" Марлин более 2.5 сек не зафиксировано
-  if (errCode != ERR_NO_ERRORS) ESP.restart();// при обнаружении ошибок - рестарт
-  if ((bridgeState == SYS_PRINT) || (pubXYZ && !samePos))   // || ((tNow - syncStart) >= 20000)
+  // при обнаружении ошибок на этапе синхронизации - блокировка всей дальнейшей работы
+  if (errCode != ERR_NO_ERRORS) bridgeState = SYS_SYNC_ERROR ;  // при ошибках блокируем систему
+   else if ((bridgeState == SYS_PRINT) || (pubXYZ && !samePos))
     prnFix(0, true);                          // Включаем фиолетовый UI (состояние печати)
 }
 
 void setup() {
   //system_update_cpu_freq(160);
+  WiFi.persistent(false); 
+  WiFi.setAutoConnect(false);                 // На случай, если в памяти модуля есть чужие "хвосты" 
   // Получаем информацию о последнем сбросе
   // и помещаем в в конец буфера gAnswer_buf, где она сохранится до первого вызова init_chunks()
   char* buf = &gAnswer_buf[GANSWER_BUF_SIZE - sizeof(packet)];  // до первого запуска передачи файла размер gAnswer_buf -= sizeof(packet)

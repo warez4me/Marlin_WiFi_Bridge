@@ -53,6 +53,7 @@ void netQueClean();
 bool getNum(uint32_t*, char**, uint32_t, bool skipSp = false);
 void doReboot(bool sidReset = false);
 void showTime(uint32_t show_cid);
+void showIP();
 bool setWrkPath(bool show = false);
 void setState();
 int confirmStr(strMem_t*, char*, size_t);

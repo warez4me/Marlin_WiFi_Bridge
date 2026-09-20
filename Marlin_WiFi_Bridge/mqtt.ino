@@ -641,7 +641,7 @@ void mqttLoop() {
     // интервалы автоопроса prnFix() короче ручных, это предотвращает дублирование, если автоопрос поддерживается
     if (((now - busyMarkerTime) < 2500) ||      // ждем 2.5 сек, если Марлин сообщил, что занят
         ((bridgeState != SYS_IDLE) && (bridgeState != SYS_PRE_PRINT) && (bridgeState != SYS_PRINT)) ||
-        (cmdMode)) {                            // если отрабатываются ручные команды отладки или идет листинг файлов
+        (ok.wdTimer) || (fListTOut) || (cmdMode) || uartWxStop) { // если отрабатываются ручные команды отладки или идет листинг файлов
       // запрещаем опрос, сбрасываем таймеры интервалов по всем параметрам
       tbPollTime = now; xyzPollTime = now; pgsPollTime = now; }
     if (pubTB && ((now - timeTB) >= 50) && ((now - pubTime) >= 50)) {

@@ -192,6 +192,7 @@ inline void uartOff() {
       UART_RXFIFO_OVF_INT_CLR | UART_FRM_ERR_INT_CLR);
   // ВНИМАНИЕ: Строку со сбросом FIFO (UART_RXFIFO_RST) мы отсюда НАВСЕГДА УБИРАЕМ.
   // Пускай буфер переполняется входящим трафиком, нам это больше не мешает.
+  gAnswer_idx = 0; anchorIdx = 0;           // сбрасываем буфер полностью
 }
 
 inline void uartOn() {
@@ -212,6 +213,7 @@ inline void uartOn() {
       UART_RXFIFO_TOUT_INT_ENA | UART_FRM_ERR_INT_ENA |
       UART_RXFIFO_FULL_INT_ENA | UART_RXFIFO_OVF_INT_ENA);
   uartWxStop = false;
+  gAnswer_idx = 0; anchorIdx = 0;           // сбрасываем буфер полностью
 }
 
 void clear_uart(void) {

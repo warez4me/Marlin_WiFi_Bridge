@@ -257,7 +257,8 @@ int fileID(bool nameSearch, uint32_t fIdxSize, bool setPrint) {
     if (ok.setState == SYS_WAIT_M20) {
       sdFile.selName = nameSearch; ok.setState = SYS_IDLE;
       // получить список файлов с заданным режимом поиска
-      ok.skip = 1; ok.waiting = false; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
+      ok.skip = 1; ok.waiting = false;
+      sdTimer = SD_CHECK_PERIOD; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M21\nM20 L \"%s\"\n"),
                                             ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
       uart_w((char*)packet, len); }
@@ -673,27 +674,27 @@ void getMarlin() {
           case ID_SD_OK:
             sdIsOK = (ok.skip == 0);
             if (cmdMode) cmdMode -= 1;                  // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
-            if (bridgeState != SYS_PRE_UPLD)            // для SYS_PRE_UPLD лог не выводим
-              if (logMark == '\xff') logMark = '<';     // маркируем для лога, если это 1й маркер строки
+            // для SYS_PRE_UPLD и sdAutoScan лог не выводим, иначе - маркируем для лога, если это 1й маркер строки
+            if (logMark) logMark = ((bridgeState == SYS_PRE_UPLD) || (sdAutoScan))? '-': '<'; // '-' -> ID_ECHO
+            //logMark = '-'; // '-' -> ID_ECHO
+            sdAutoScan = 0;
             prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
             break;
           case ID_SD_RELEASED:
           case ID_SD_NOSD_1:
           case ID_SD_NOSD_2:
+            prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
             fListMode = false; sdIsOK = false; fListTOut = 0;
             fListWait = (prmID == ID_SD_RELEASED);      // M22 запрещает автоскан
-            if (sdFinal) sdCheck = true;                // разрешаем heartbeat даже при отсутствии SD
+            if (sdFinal) sdChecked = true;              // разрешаем heartbeat даже при отсутствии SD
             if (cmdMode) cmdMode -= 1;                  // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
             gAnswer_idx = anchorIdx = 0;                // сбрасываем буфер полностью
             sdFile.selName = 0; sdFile.selIdx = 0;
             sdFile.fInfo = NULL;                        // сбрасываем указатель на запись о файле
             sdFile.pageBegIdx = 0;                      // сбрасываем индекс начала страницы показа
             sdFile.maxIdx = 0;                          // сбрасываем размер списка файлов
-            //if (bridgeState != SYS_IDLE)
-            //  errCode |= ERR_NO_SD_CARD;
-            // else 
-            // маркируем для лога '!', если нет отладочного маркера и если это не вторая попытка автоскана
-            if ((logMark) && (sdTryNum != 1)) logMark = '!';
+            // маркируем для лога '!', если нет отладочного маркера, либо если это попытка автоскана маркируем для удаления из лога
+            if (logMark) logMark = (sdAutoScan)? '-': '!'; // '-' -> ID_ECHO
             break;
           case ID_SD_PROGRESS: {
             if (bridgeState != SYS_PRINT) {
@@ -801,12 +802,7 @@ void getMarlin() {
       gAnswer_idx = anchorIdx;                  // если неподдекживаемое сообщение - указатель приема в начало строки
       continue;                                 // продолжить считывание потока от Marlin
       }
-    if (!PowerUp && !fListMode && (wifi_timer > 0)) {         // в начале сеанса показываем IP
-      PowerUp = true;
-      IPAddress ip = WiFi.localIP();
-      len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M117 IP:%d.%d.%d.%d\n"), ip[0], ip[1], ip[2], ip[3]);
-      uart_w((char*)packet, len, true);
-      }
+    if (!PowerUp) showIP();                     // в начале сеанса показываем IP
     // отрабатываем информационные строки ответа
     bool ackBFT = false;
     uint32_t seqACK = 0;
@@ -872,6 +868,7 @@ void getMarlin() {
           }
         break; }
       case ID_OK: {
+        if (sdAutoScan) sdAutoScan -= 1;          // флаг запрета вывода ошибок в лог
         if (ok.skip) {
           ok.skip -= 1;
           if (ctrl & UART_ACK) logMark = 0;       // маркируем для лога "отладочным" маркером
@@ -1168,9 +1165,10 @@ void getMarlin() {
           if (logMark == '\xff') logMark = '<';   // маркируем, если это 1й маркер строки
         break; }
       case ID_ECHO: {
-        if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
+        if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT)) {
           // вывод в лог за исключением случаев, когда идет печать/загрузка с отключенной подробной статистикой
           if (logMark == '\xff') logMark = '<';   // маркируем, если это 1й маркер строки
+           else if (logMark == '-') logMark = '\xff'; } // снимаем маркер лога для ошибки автоскана SD
         break; }
       case ID_ACTION: {
         if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
@@ -1179,7 +1177,7 @@ void getMarlin() {
         break; }
       case ID_SD_BEGIN:
         fListMode = true; sdIsOK = false; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
-        cmdMode += 1;                           // запрет опроса параметров
+        cmdMode += 1; sdAutoScan = 0;   // запрет опроса параметров
         gAnswer_idx = 0; anchorIdx = 0; // сбрасываем буфер полностью
         pathMem.mLen = 0; pathMem.tLog = 0; pathMem.xCS = 0;  // для подсчета кол-ва папок
         sdFile.sizeCount = 0; sdFile.keepCount = 0;           // для подсчета кол-ва папок
@@ -1193,8 +1191,8 @@ void getMarlin() {
           }
         break;
       case ID_SD_END:
-        fListMode = false; sdIsOK = true; fListWait = false; fListTOut = 0;
-        sdCheck = true;                 // разрешаем heartbeat
+        fListMode = false; sdIsOK = true; fListWait = false; fListTOut = 0; sdAutoScan = 0;
+        sdChecked = true;               // разрешаем heartbeat
         if (cmdMode) cmdMode -= 1;      // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
         if (bridgeState == SYS_PRE_UPLD) break;
         sdFile.maxIdx = sdFile.fIdx;
@@ -1284,7 +1282,7 @@ void getMarlin() {
       } // switch (infoID)
     gAnswer_idx = anchorIdx;                // сбрасываем текущую позицию записи на якорную
     } // while (uart_r_avail() && ((errCode & ~(ERR_PFT_BUSY)) == ERR_NO_ERRORS))
-  if (logMark != '\xff') logMsg(logMark);  // если (logMark != '0\xff'), значит есть строка в лог
+  if (logMark != '\xff') logMsg(logMark);  // если (logMark != '\xff'), значит есть строка в лог
   if (ctrl & UART_COUNT)
     if (uartSymAll) {
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:RX= %d line(s), %d sym(s)\n"), uartEOL, uartSymAll);

@@ -96,8 +96,9 @@ bool useBFT = false;   // флаг использования BFT
 int32_t seqBFT = 0;    // порядковый индекс пакета BFT, устанавливается <0 при инициализации BFT режима
 
 uint32_t wd_BIN_Timer = 0, wd_ACT_Timer = 0, M20_Timer = 0, fListTOut = 0, M30_Timer = 0, otaTimer = 0, txTimer = 0;
-uint32_t errCast = 0, wsMap = 0, cmdMode = 0, M30_Seq = 0, fListScanned = FLIST_NOT_SCANNED, sdTryNum = 2;
-bool srvSync = false, fListWait = false;
+uint32_t sdTimer = SD_CHECK_PERIOD, sdAutoScan = 0;
+uint32_t errCast = 0, wsMap = 0, cmdMode = 0, M30_Seq = 0, fListScanned = FLIST_NOT_SCANNED;
+bool srvSync = false, fListWait = false, sdCanTry = true;
 
 //////
 char svcBuf[SVC_BUF_SIZE];
@@ -107,8 +108,8 @@ uint8_t packet[PACKET_BUF_SIZE];
 bool syncReported = false;
 unsigned long wifiLastCheck = 0, timeLastSync = 0, lastUARTTime = 0;
 int wifi_timer = 0, apTime = 0;
-bool sdCheck = false;           // разрешает WS heartbeat после первой успешной либо любой (при sdFinal == true) попытки прочитать список файлов на SD карте
-bool sdFinal = false;           // поднимается для авто- попытки прочитать список файлов на SD карте, разрешает sdCheck для любого результата чnения SD
+bool sdChecked = false;         // разрешает WS heartbeat после первой успешной либо любой (при sdFinal == true) попытки прочитать список файлов на SD карте
+bool sdFinal = false;           // поднимается для авто- попытки прочитать список файлов на SD карте, разрешает sdChecked для любого результата чтения SD
 enum pgsReset_t {PROGRESS_ZERO = 0, PROGRESS_WAIT, PROGRESS_LOCK};
 pgsReset_t pgsReset = PROGRESS_LOCK; // флаг для сброса MQTT значения прогресса 100% -> 0% после "press AnyKey"
 
@@ -217,8 +218,8 @@ void initWPath(char* msg, uint8_t cid) {
   sdFile.selName = 0; sdFile.selIdx = 0;      // ничего не искать и не показывать
   // сбрасываем указатель на запись о файле, индекс начала страницы показа, размер списка файлов
   sdFile.fInfo = NULL; sdFile.pageBegIdx = 0; sdFile.maxIdx = 0;
-  fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;                         // 2 сек
-  ok.skip = 1; ok.waiting = true; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 5 сек 
+  sdTimer = SD_CHECK_PERIOD; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT; // 7 сек
+  ok.skip = 1; ok.waiting = true; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 8 сек 
   uart_w((char*)(packet +3), len - 3);
 }
 
@@ -318,7 +319,8 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
   static uint8_t tMasterID = 0xFF;
   uint32_t tNow = millis();
   switch(type) {
-    case WStype_TEXT: {  
+    case WStype_TEXT: {
+      if (bridgeState == SYS_SYNC_ERROR) break; // в состоянии стартовой синхроошибки игнорируем всех клиентов
       if (length > (MAX_FNAME_LEN + 22)) {    //макс.формат = "FILE:xxxxx:xxxxxxxxxx:<fName>" = (112 + 22) символов
         br_announce(ANN_MSG_ILLEGAL, num, socket.clWS_ID, ANN_ID_BIG_MSG); break; }
       bool pgs_flag = false;                  // выбирает WS message (фактически - "anykey") , для сброса MQTT прогресса 100% -> 0%
@@ -373,6 +375,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           len = snprintf_P((char*)packet, NET_DATA_MAX, ((fName)? PSTR("\"%s\"\n"): PSTR("No file selected.\n")), fName);
           netQuePut(packet, -len, (char*)PSTR("L::: "));
           br_announce(ANN_ROLE_TERMINATED, num, socket.clWS_ID, msgPrm);
+          if (socket.clWS_ID != num) ctrl = 0;          // сброс отладки, если сменился активист
           socket.clGroup_ID = msgPrm; socket.clWS_ID = num; tAnnounce = tNow;
           pgs_flag = true;                // флаг "отложенного" сброса 100% прогресса в публикации MQTT
           break;
@@ -556,14 +559,17 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           ok.doLog = true; ok.waiting = false; ok.skip = 0; ok.wdTimer = ok.wdLoad = 0;
           if (length >= 3) {
             // корректируем автомат поведения программы в зависимости от введенных команд
-            uint32_t gStr = (msg[0] | (msg[1] << 8) | (msg[2] << 16) | (msg[3] << 4)); // делаем из строки число (LE) для быстрого сравнения
-            if ((((gStr & 0x00FFFFFF) | 0x20) == 0x31326D) || ((gStr | 0x20) == 0x3132206D)) {        // "M21", "m21", "M 21", "m 21"
-              fListWait = false; fListScanned = FLIST_NOT_SCANNED; }              // - разрешаем автоскан SD и сообщение о таймауте
-             else if ((((gStr & 0x00FFFFFF) | 0x20) == 0x32326D) || ((gStr | 0x20) == 0x3232206D)) {  // "M22", "m22", "M 22", "m 22"
-              fListWait = true;  fListScanned = FLIST_NOT_SCANNED; }              // запрещаем автоскан SD
-             else if ((((gStr & 0x00FFFFFF) | 0x20) == 0x38326D) || ((gStr | 0x20) == 0x3832206D))    // "M28", "m28", "M 28", "m 28"
-              cmdMode += 1;                                                       // запрещаем опрос параметров (mqtt.ino)
-            }                                                                     // восстановление опроса - после успешного ответа на M21
+            uint32_t gStr = ((msg[0] | (msg[1] << 8) | (msg[2] << 16) | (msg[3] << 4)) | 0x20); // делаем из строки число (LE) для быстрого сравнения
+            uint32_t gStrV1 = (gStr & 0x00FFFFFF);                    // 2й вариант (без пробела) для сравнения
+            if       ((gStrV1 == 0x31326D) || (gStr == 0x3132206D)) { // "M21", "m21", "M 21", "m 21"
+              fListWait = false; fListScanned = FLIST_NOT_SCANNED; }  // разрешаем автоскан SD и сообщение о таймауте
+             else if ((gStrV1 == 0x32326D) || (gStr == 0x3232206D)) { // "M22", "m22", "M 22", "m 22"
+              fListWait = true;  fListScanned = FLIST_NOT_SCANNED; }  // запрещаем автоскан SD
+             else if ((gStrV1 == 0x30326D) || (gStr == 0x3032206D))   // "M20", "m20", "M 20", "m 20"
+              sdTimer = SD_CHECK_PERIOD;                              // продлеваем таймер повторного автосканирования SD
+             else if ((gStrV1 == 0x38326D) || (gStr == 0x3832206D))   // "M28", "m28", "M 28", "m 28"
+              cmdMode += 1;                                           // запрещаем опрос параметров (mqtt.ino)
+            }                                                         // восстановление опроса - после успешного ответа на M21
           memcpy(packet, payload, length); packet[length++] = '\n';
           uart_w((char*)packet, length);                                          // отправляем введенный G-code в принтер
           netQuePut_pre(packet, length, (char*)PSTR("L:>:: "));                   // отправляем введенный G-code в лог всем
@@ -656,7 +662,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       break;
     case WStype_CONNECTED:
       wsMap |= (1 << (num & 7));                          // установка бита с номером клиента в общей карте подключений
-      if (time(nullptr) > 1451616000) showTime(num);      // сообщаем подключившемуся клиенту тек. дату/время
+      if ((bridgeState == SYS_SYNC_ERROR) || (time(nullptr) > 1451616000)) showTime(num); // сообщаем подключившемуся клиенту тек. дату/время
       break;
     default:
       break;
@@ -1054,9 +1060,9 @@ void checkTimers() {
     if (fListTOut)                                      // таймер таймаута получения листинга SD
       if (--fListTOut == 0) {
         errCode |= (ERR_FLIST_TOUT & fListScanned); fListScanned = FLIST_SCANNED; // блокируем повторение сообщений
-        fListMode = false; fListWait = false; sdIsOK = false;
+        fListMode = false; fListWait = false; sdIsOK = false, sdAutoScan = 0;
         gAnswer_idx = anchorIdx = 0;                    // сбрасываем флаг валидности буфера имен
-        if (sdFinal) sdCheck = true; }                  // разрешаем heartbeat даже при отсутствии SD
+        if (sdFinal) sdChecked = true; }                // разрешаем heartbeat даже при отсутствии SD
     if (txTimer)                                        // таймер задержки выдачи команды в UART
       if (--txTimer == 0)                               // разрешаем аппаратное прерывание, включаем передачу UART
         SET_PERI_REG_MASK(UART_INT_ENA(UART0), UART_TXFIFO_EMPTY_INT_ENA);
@@ -1078,7 +1084,7 @@ void checkTimers() {
       } }
     uint32_t tNow = millis();
     // --- АВТОМАТИЧЕСКИЙ СБРОС RTC ПРИ ПОЛНОМ ОТСУТСТВИИ КЛИЕНТОВ ---
-    // wsMap == 0 означает, что к веб-сокетам платы не подключен вообще никто
+    // wsMap == 0 означает, что не подключено ни одного веб-сокет клиента
     // 16 минут = 960 000 миллисекунд, дольше 3 циклов синхронизации
     if ((wsMap == MAP_NOONE) && (timeLastSync)) {
       if ((tNow - timeLastSync) > 960000) {
@@ -1090,12 +1096,19 @@ void checkTimers() {
     // Переменная wifi_timer > 0 гарантирует, что мы физически подключены к Wi-Fi
     if ((wifi_timer > 0) && (wifi_timer <= 5))
       wifiState = WIFI_STATE_STA;               // разрешаем mqtt ~через 5 сек после WiFi коннекта
-    if (wifi_timer == 8) { uartOn(); lastUARTTime = tNow; } // включаем UART через 2 сек после WiFi коннекта
-    if ((tNow > 60000) && (wifiState == WIFI_STATE_STA)) sdCheck = true;
+    if ((wifi_timer == 8) && (bridgeState != SYS_SYNC_ERROR)) {
+      uartOn(); lastUARTTime = tNow; }          // включаем UART через 2 сек после WiFi коннекта
+    if ((tNow > 60000) && (wifiState == WIFI_STATE_STA)) {
+      sdChecked = true; if (!PowerUp) showIP(); } // принудительно разрешаем HB и показываем IP
+    if (sdTimer)
+      if (--sdTimer == 0) {
+        sdCanTry = true; sdTimer = SD_CHECK_PERIOD; }
     } // if (flag_1sec_1)
 }
 
 void checkErrors() {
+  if (bridgeState == SYS_SYNC_ERROR) {
+    errCode = ERR_NO_ERRORS; return; }                        // если были ошибки при стартовой синхронизации
   size_t len = 0;
   const char* msgPtr = (const char*)pgm_read_ptr(&brStateName[bridgeState]);
   memset(packet, 0, PACKET_BUF_SIZE);
@@ -1193,6 +1206,7 @@ void heartbeat(bool forced) {
   size_t len = 0;
   bool lastCast = false;
   int hbState = HB_WAIT; pubState = PUB_WAIT;
+  if (bridgeState == SYS_SYNC_ERROR) errCast = 3; // если были ошибки при стартовой синхронизации
   if (errCast > 0) {
     errCast--; lastCast = !(errCast);
     hbState = HB_ERROR; pubState = PUB_ERROR;
@@ -1227,7 +1241,9 @@ void heartbeat(bool forced) {
   if ((errCast > 0) || lastCast ||
       (((socket.fSize == 0) || (socket.fName[0] == '\0')) && (hbState != HB_PRINT))) {        // формируем короткий формат HeartBeat
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("H:%u:%d:%d:%d\n"),
-                                  sessionID, hbState, (socket.clGroup_ID & 0xFFFF), hb_Ctrl);
+                                  sessionID, hbState,
+                                  (bridgeState == SYS_SYNC_ERROR)? 0x10000: (socket.clGroup_ID & 0xFFFF),
+                                  hb_Ctrl);
     if (hbState != HB_PRINT) socket.progress = 0; }
    else {                                                                                     // формируем полный формат HeartBeat
     pgs  = ((socket.fSize)? ((uint32_t)((uint64_t)(socket.progress * 100) / socket.fSize)): 0);
@@ -1273,6 +1289,7 @@ void loop() {
       writeFlash();
     case SYS_WAIT_OTA:
     case SYS_OTA_END:
+    case SYS_SYNC_ERROR:
       break;
     case SYS_SD_ERASE:
       lState = bridgeState;
@@ -1321,14 +1338,15 @@ void loop() {
         // при переключении в эти режимы ставим флаг сброса gData.progress в webSocketEvent()
         if (pgsReset == PROGRESS_ZERO) pgsReset = PROGRESS_WAIT;
         // проверяем доступность SD карты и наличие списка файлов в памяти
-        if (sdIsOK | uartWxStop) sdTryNum = 2;
+        if (sdIsOK | uartWxStop) sdCanTry = true;
         if (!(anchorIdx) && !uartWxStop)
-          if ((sdTryNum) && ((tNow - lastUARTTime) > 1000) && !(M30_Timer | M20_Timer | fListWait)) {
+          if (sdCanTry && ((tNow - lastUARTTime) > 1000) && !(M30_Timer | M20_Timer | fListWait)) {
             fListGet(65535);                                          // пытаемся прочитать SD карту
-            sdTryNum -= 1; lastUARTTime = tNow; sdFinal = true;       // разрешаем поднять sdCheck при любом результате чтения SD
+            sdCanTry = false; lastUARTTime = tNow; sdFinal = true;    // разрешаем поднять sdChecked при любом результате чтения SD
+            if (sdChecked) sdAutoScan = 2;                            // подавление лога при ошибке карты
         }   }
-       else { pgsReset = PROGRESS_ZERO; lastUARTTime = tNow; sdTryNum = 2; }
-      if (flag_1sec_2 && !fListMode && sdCheck) heartbeat();
+       else { pgsReset = PROGRESS_ZERO; lastUARTTime = tNow; sdCanTry = true; }
+      if (flag_1sec_2 && !fListMode && sdChecked) heartbeat();
       break; }
     case WIFI_STATE_AP:
       break;

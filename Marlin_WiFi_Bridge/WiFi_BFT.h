@@ -31,23 +31,25 @@ uint32_t parseRC;
 #define SVC_BUF_SIZE     64
 
 /*=== инициализация таймеров ===*/
-#define WAIT_OK_SEC     5
+#define WAIT_OK_SEC     8
 #define WAIT_BIN_SEC   10
 #define WAIT_ACT_SEC   10
-#define WAIT_FLIST_SEC  2
+#define WAIT_FLIST_SEC  7
 
 #define TICKS_PER_SEC   8
 
 #define WAIT_OK_TIMEOUT  (WAIT_OK_SEC  * TICKS_PER_SEC)
 #define WAIT_BIN_TIMEOUT (WAIT_BIN_SEC * TICKS_PER_SEC)
 #define WAIT_ACT_TIMEOUT (WAIT_ACT_SEC * TICKS_PER_SEC)
-#define WAIT_QRY_TIMEOUT TICKS_PER_SEC
+//#define WAIT_QRY_TIMEOUT TICKS_PER_SEC
 #define WAIT_FLIST_TIMEOUT (WAIT_FLIST_SEC * TICKS_PER_SEC)
 
 #define JS_BIN_TIMEOUT   ((WAIT_BIN_SEC * 1000) + 2000) //msec для согласования в JS
 
+#define SD_CHECK_PERIOD  (60 * 1)   // сек для повторного сканирования SD карты
+
 /*=== буферы WiFi файловых данных ===*/
-#define NUM_CHUNKS 4      // "кольцевой" буфер для 2 чанков
+#define NUM_CHUNKS 4      // 4 чанка в "кольцевом" буфере
 #define CHUNK_SIZE 1230   // Размер чанка (согласованно с JS!)
 
 #define MAX_FNAME_LEN 112 // максимальная длина имени файла
@@ -107,7 +109,8 @@ enum BridgeState_t {
   SYS_WAIT_M20, SYS_WAIT_M21, SYS_WAIT_M22, SYS_WAIT_M23, SYS_WAIT_M24, SYS_WAIT_M27,
   SYS_WAIT_M30, SYS_WAIT_M32,
   SYS_WAIT_OTA, SYS_OTA,  SYS_OTA_END,
-  SYS_WAIT_MOVE, SYS_WAIT_TEMP };
+  SYS_WAIT_MOVE, SYS_WAIT_TEMP,
+  SYS_SYNC_ERROR };
 
 const char s_idle[]   PROGMEM = "SYS_IDLE";
 const char s_p_upld[] PROGMEM = "SYS_PRE_UPLD";
@@ -130,6 +133,7 @@ const char s_ota[]    PROGMEM = "SYS_OTA";
 const char s_ota_e[]  PROGMEM = "SYS_OTA_END";
 const char s_w_move[] PROGMEM = "SYS_WAIT_MOVE";
 const char s_w_temp[] PROGMEM = "SYS_WAIT_TEMP";
+const char s_s_err[]  PROGMEM = "SYS_SYNC_ERROR";
 
 static const char* brStateName[] PROGMEM __attribute__((aligned(4))) = {
   s_idle,   s_p_upld, s_w_m28,  s_trans,  s_w_m29,  s_p_prn,  s_print,
@@ -137,7 +141,8 @@ static const char* brStateName[] PROGMEM __attribute__((aligned(4))) = {
   s_w_m20,  s_w_m21,  s_w_m22,  s_w_m23,  s_w_m24,  s_w_m27,
   s_w_m30,  s_w_m32,
   s_w_ota,  s_ota,    s_ota_e,
-  s_w_move, s_w_temp };
+  s_w_move, s_w_temp,
+  s_s_err };
 /*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 /*=== пользовательская конфигурация ===*/

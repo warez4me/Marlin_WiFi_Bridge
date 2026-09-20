@@ -258,7 +258,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   let lw = [],
   /*let*/ ws, ts = f = sf = lK = ""  /*имя файла, выбранный файл, контекст UX()*/, 
-    nn = o = xt = at = ct = ir = wn = cid = sx = ss = sid = sc = sm = sp = pt = wt = Z = tt = 0,
+    nn = o = xt = at = ct = ir = wn = cid = sx = ss = sid = sc = sm = sp = pt = wt = Z = tt = w = 0,
     tm = 0x0604, /*T_INIT : init system state*/
     E = (v, c) => {
       tm = cid = 0; f = null; v && L(v, c || "#c32"); };   //lc.cEr); };
@@ -480,7 +480,6 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     ws = new WebSocket('ws://' + location.hostname + ':81'); ws.binaryType = 'arraybuffer';
     
     ws.onopen=()=> { 
-      n.innerText = "ONLINE"; n.className = "online"; n.style.opacity = "1";
       initUp("Connected", "#eee");     //lc.sDb цветом чтобы точно напечатало
       // initUp("Connected", "#fa5");  //lc.cSv);
       // Авто-заявка после реконнекта
@@ -488,7 +487,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     };
 
     ws.onclose=()=> { 
-      n.innerText = "OFFLINE"; n.className = "offline";
+      w = clearTimeout(w); n.innerText = "OFFLINE"; n.className = "offline";
       pt && initUp("WS closed");  // [if pt] чтобы избежать скроллинга при длительном дисконнекте
       sc = pt = tt = sid = sp = 0; sf = "";
       if (Z == 10) f = null;
@@ -518,6 +517,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
               //  hl = "-HB- tm : 0x" + tm.toString(16) + " >> ";
               //}
               // ^^^^^ ### debug ^^^^^
+          // Ватчдог надписи: сбрасываем и взводим заново на 2.5 секунды
+          w = clearTimeout(w) || setTimeout(() => { n.innerText = "OFFLINE"; n.className = "offline";/* n.style.opacity = 1;*/ }, 2500);
           if (h.length > 2) {
             // Ручное присваивание для плавающего формата (Zopfli-стайл)
             sx  = +h[1] || 0; // id сессии сервера для контекста UX
@@ -531,7 +532,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
             Z = (cid == sid & !!cid) << 3 | !!sf << 2 | ss & 3;
             if (sc < 2 && at) at = clearTimeout(at); // hb ctrl запрещает BIN отправку - сбрасываем таймер
             // Пульс ONLINE
-            n.className == "online" && (n.style.opacity = n.style.opacity == .5 ? 1 : .5);
+            n.innerText = "ONLINE"; n.className = "online";
+            n.style.opacity = n.style.opacity == .5 ? 1 : .5;
             // Тактика сессий
             if ((tm & 0xf0ff) == 0x8009) {
               if (Z > 7)  tm = 0;               // авторизовались, сбрасываем sticky tm
