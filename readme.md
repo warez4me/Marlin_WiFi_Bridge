@@ -329,6 +329,7 @@ Open your Arduino IDE, navigate to the **Tools** menu, and apply the exact param
 * **Flash Mode:** `DOUT` *(Ensures universal compatibility across all chip variants and clones)*.
 * **Reset Method:** `no dtr (aka ck)`
 * **VTables:** `Flash`
+* **Erase Flash:** `Only Sketch`
 
 #### 3. First-Time Wired Flashing Process
 1. Download the repository files to your local disk, open the Arduino IDE, and open the project from the [📁 Marlin_WiFi_Bridge/](Marlin_WiFi_Bridge/) folder.
