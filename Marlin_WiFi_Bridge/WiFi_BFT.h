@@ -49,14 +49,17 @@ uint32_t parseRC;
 #define SD_CHECK_PERIOD  (60 * 1)   // сек для повторного сканирования SD карты
 
 /*=== буферы WiFi файловых данных ===*/
-#define NUM_CHUNKS 4      // 4 чанка в "кольцевом" буфере
-#define CHUNK_SIZE 1230   // Размер чанка (согласованно с JS!)
+#define NUM_CHUNKS 4          // 4 чанка в "кольцевом" буфере
+#define CHUNK_SIZE 1230       // Размер чанка (согласованно с JS!)
 
-#define MAX_FNAME_LEN 112 // максимальная длина имени файла
+#define MAX_FNAME_LEN 112     // максимальная длина имени файла
 
-#define CID_ALL       0xF // для осуществления broadcast
-#define CID_NOONE (~CID_ALL) // безадресный
-#define MAP_NOONE     0   // карта пуста, отправлять некому
+#define WS_ALL       0xF      // для осуществления broadcast
+#define WS_URGENT (~WS_ALL)   // используется в качестве признака "срочности"
+#define WS_NOONE     16       // соответствует отсутствию подключений, либо безадресный
+#define SID_NOONE     0       // активист отстутствует, регистрация разрешена
+#define SID_SYSTEM  0x10000   // для временной блокировки регистрации активиста
+#define MAP_NOONE     0       // карта пуста, отправлять некому
 
 /*=== типы WS сообщений ===*/
 /*  typedef enum {  // from library WebSockets

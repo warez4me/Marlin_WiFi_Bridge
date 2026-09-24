@@ -26,8 +26,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     margin: 0; text-align: center;
   }
 
-  /* Заголовок с небольшим разрядом букв */
-  h3 { letter-spacing:.5px; }
+  /* Заголовок */
+  h3 { margin: 2px 0 12px; display: flex; justify-content: space-between; align-items: center; padding: 0 4px; font-size: 17px; }
 
   /* Контейнер */
   .card {
@@ -103,18 +103,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   input.on { cursor: text !important; }
   
   #l {
-    height: 440px; //220px;
+    height: 484px; //220px;
     background: #000;
     text-align: left; padding: 10px;
     font: 13px/1.4 monospace;
     margin: 12px 0;
-    //border: 1px solid #111;
-    // border-radius: 4px;
     overflow-y: auto; white-space: pre-wrap; // pointer-events: auto;
   }
   #l div { border-bottom: 1px solid #000; padding: 2px 0; }
 
-  #rc { margin: 15px 0; display: flex; justify-content: center; gap: 20px; pointer-events: auto; }
+  #rc { display: flex; gap: 12px; pointer-events: auto; font-size: 14px; }
   #rc label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
   /* ПРОГРЕСС-БАР: Прозрачная шторка */
@@ -122,31 +120,24 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   #t { position: relative; z-index: 2; }
 
-  #n {
-    transition: opacity .4s; display: inline-block;
-    //background: #0005;
-    padding: 2px 8px;
-    //border-radius: 4px;
-  }
+  #n { transition: opacity .4s; display: inline-block; width: 7ch; text-align: left; }
 
-  .online { color: #0d0; font-weight: bold; }  // #2ecc71
-  .offline { color: #c32; font-weight: bold; } // #e74c3c
+  .online { color: #0d0; }
+  .offline { color: #c32; }
 
   #fi { display: none; }
-
-  //@media(min-width: 600px) { #l { height: 60vh; } }
 
 </style>
 </head>
 <body>
   <div class="card">
-    <h3>Bridge: <span id="n" class="offline">OFFLINE</span></h3>
-    <div id="rc">
-      <label><input type="radio" name="m"> Text</label>
-      <label><input type="radio" name="m"> BFT</label>
-    </div>
+    /*<!-- Заголовок (Компактный инлайн-вариант): -->*/
+    <h3>
+      <div>Bridge :&nbsp;<span id="n" class="offline">OFFLINE</span></div>
+      <div id="rc"><label><input type="radio" name="m">Text</label><label><input type="radio" name="m">BFT</label></div>
+    </h3>
     <input type="file" id="fi" onchange="fSel()">
-    
+
     /*<!-- Кнопки всегда имеют класс .c -->*/
     <div id="b" onclick="mBtn()" class="c"></div>
     <div id="x" onclick="qBtn()" class="c"><div id="g"></div><span id="t"></span></div>
@@ -173,19 +164,19 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   - бит с весом 8 >  0 : наш cid (clientID) != sid (serverID) -> мы наблюдатель
                   >  1 : наш cid (clientID) == sid (serverID) -> мы активист
   ===================================================================================
-  Карта битов управляющей маски m
+  Карта битов управляющей маски (UX() :: v = M[Z])
   Каждое число в M[16] (Uint16) — это «пульт управления» элементами rb, b, t, g, x, i.
-  Ниббл  Бит  Вес     Элемент       Логика (0 / 1)
-  L      0-2	0x0007	BT Index     Индекс в массиве BT (0-7)
+  Ниббл  Бит  Вес     Элемент      Логика (0 / 1)
+  L      0-2  0x0007  BT Index     Индекс в массиве BT (0-7)
           3   0x0008  BT Mode      0: BT[i]         /  1: BT[i] + sf
-  M1 	   4-6  0x0070	ST Index     Индекс в массиве ST (0-7)
+  M1     4-6  0x0070  ST Index     Индекс в массиве ST (0-7)
           7   0x0080  ST Mode      0: ST[i]         /  1: ST[i] + sf
-  M2     8-10	0x0700	color        Индекс в "массиве" UC (0-7), объявлены в CSS как c0..c7
-          11  0x0800	b.blink      0: Disabled      /  1: Active
-  H       12 	0x1000	g.visible    0: 0%            /  1: width: sp%
-          13 	0x2000	x.class      0: c = UC        /  1: on + blink
-          14  0x4000	i.class      0: cd            /  1: on + blink
-          15  0x8000	wait React   0: ---           /  1: wait for ext. event
+  M2     8-10 0x0700  color        Индекс в "массиве" UC (0-7), объявлены в CSS как c0..c7
+          11  0x0800  b.blink      0: Disabled      /  1: Active
+  H       12  0x1000  g.visible    0: 0%            /  1: width: sp%
+          13  0x2000  x.class      0: c = UC        /  1: on + blink
+          14  0x4000  i.class      0: cd            /  1: on + blink
+          15  0x8000  wait React   0: ---           /  1: wait for ext. event
   ===================================================================================
   */
   const
@@ -223,44 +214,52 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   //  T_FILE = 0x8009  // ST:0 «Syncing», BT:9 ("F_SEL + f_name"), 12=13=14=0, sticky = 1, pulse=0, UC:0
   //v0  T_LOAD = 0x8008  // ST:0 «Syncing», BT:8 ("UPLOAD + f_name"), 12=13=14=0, sticky = 1, pulse=0, UC:0
   //v1  T_LOAD = 0x860D  // ST:0 «Syncing», BT:5 ("UP-ING + f_name"), 12=13=14=0, sticky = 1, pulse=0, UC:6
+  //  T_ERR  = 0xA777  // ST:7 «Continue», BT:7 "ERROR!", 12=14=0, 13=sticky=1, pulse=0, UC:7 (red)
 
-  /* 
-  ss   (heartbeatState) :	Состояние сервера (0, 1, 2, 3)   { READY_TO_SEL: 0, UPLOADING: 1, READY_TO_PRN: 2, PRINTING: 3 }
-  sid  (heartbeatID)    :	ID активного пользователя на сервере
-  cid  (myID)           :	Мой сгенерированный ID
-  sp   (rProgress)
-  f    (file)           : Объект выбранного файла
-  o    (offset)         : Смещение (сколько байт передано)
-  xt   (resetTimer)     :	Таймер подтверждения отмены (дескриптор, м.б. ===null)
-  at   (actTimer)       : Таймер ожидания NEXT запроса
-  ct   (reconnectTimer)
-  ir   (isReading)      : идет чтение файла
-  wn   (pendingNext)    : признак ожидающего запроса NEXT
-  wt   (pendingTicks)   : количество HeartBeats где может подтвердиться наша регистрация
-  sm   (rMode)          : подтвержденный режим записи файла на Марлин из HeartBeat сообщения
-  sf   (rFile)          : подтвержденное имя текущего файла из HeartBeat сообщения
-  sp   (rProgress)      : подтвержденный прогресс в % из HeartBeat сообщения
-  */
   /*
+  Z   : синтетический идентификатор текущего состояния системы для данного клиентского сеанса (см. таблицы вверху)
+  ws  : дескриптор веб-сокета
+  ss  :	Состояние сервера (0, 1, 2, 3)   { READY_TO_SEL: 0, UPLOADING: 1, READY_TO_PRN: 2, PRINTING: 3 }
+  sid :	ID активного пользователя на сервере
+  cid :	Мой сгенерированный ID
+  sm  : подтвержденный режим записи файла на Марлин из HeartBeat сообщения
+  sf  : подтвержденное имя текущего файла из HeartBeat сообщения
+  sp  : подтвержденный прогресс в % из HeartBeat сообщения
+  sx  : id сессии сервера для контекста UX
+  sc  : ctrl из HeartBeat сообщения, управление режимом клиента : бит_0 - лог вкл/выкл, бит_1 - BIN передача вкл/выкл
+  pt  : метка времени в начале каждого сетевого пакета (сообщения)
+  f   : Объект выбранного файла
+  o   : Смещение (сколько байт передано)
+  xt  :	Таймер подтверждения отмены (дескриптор, м.б. ===null)
+  at  : Таймер ожидания NEXT запроса
+  ct  : (reconnectTimer)
+  tt  : счетчик HeartBeat сообщений (~1 сек) для отсчета интервала отправки синхропакетов времени
+  ir   (isReading)      : идет чтение файла
+  wn  : признак ожидающего запроса NEXT
+  wt  : количество HeartBeats где может подтвердиться наша регистрация
+  lK  : "прошлый" контекст UX()
+  nn  : счетчик переданных байт для вывода в лог
+  w   : таймер WDT для управления текстом в строке состояния соединения
+  tm  : "тактическая" маска для слова управления (UX() :: v) отображением элементов интерфейса
+  */
+  /* --- цвета сообщений в лог : основной смысл
     to_Marlin:"#28b" /lazy-blue/,   from_Marlin:"#2a6" /lazy-green/,
-    srvError:"#a10"  /lazy-red/,     clientError:"#c32" /light-red/,
-    srvServ:"#b80"   /dark-yellow/,    clientServ:"#fa5" /light-brown/,
+    srvError:"#a10"  /lazy-red/,    clientError:"#c32" /light-red/,
+    srvServ:"#b80"   /dark-yellow/, clientServ:"#fa5"  /light-brown/,
     srvDebug:"#eee"  /light-gray/
-    ">":"#28b", "<":"#2a6", ",":"#b80", "!":"#a10"
+     --- цвета сообщений в лог : маркеры в начале строки
+    ">":"#28b", "<":"#2a6", ",":"#b80", "!":"#a10"  // любой другой начальный символ == "#eee"
   */
   // const $ = q => document.getElementById(q),  // Поиск элемента !!удалено как хак-трюк с учетом особенностей движка
   // let b, t, i, x, g, n, rb, fi, l,  // указатели на объекты DOM !!удалено как хак-трюк с учетом особенностей движка
 
   r = new FileReader(); // const для всего жизненного цикла страницы
 
-  /////// ### debug
-  /*let*/ /* hS, hm = 0, *//*nn = 0, lw = [];*/  // в консоли отладчика браузера нужно ввести console.log(lw.join(''));
-
-  let lw = [],
-  /*let*/ ws, ts = f = sf = lK = ""  /*имя файла, выбранный файл, контекст UX()*/, 
+  let lw = [],       // массив-кэш браузера для сохранения лога
+    ws, f = sf = lK = "", 
     nn = o = xt = at = ct = ir = wn = cid = sx = ss = sid = sc = sm = sp = pt = wt = Z = tt = w = 0,
     tm = 0x0604, /*T_INIT : init system state*/
-    E = (v, c) => {
+    E = (v, c) => {  // частичный сброс и сообщение
       tm = cid = 0; f = null; v && L(v, c || "#c32"); };   //lc.cEr); };
 
   r.onload =(e)=> {
@@ -363,21 +362,13 @@ const char INDEX_HTML[] PROGMEM = R"=====(
 
   function UX() {
     let c, v = M[Z];         // Базовая маска из массива
-    //let c, v0 = v = M[Z];  // v0 - for ### debug only
     // накладываем тактический патч
-    // ненулевая маска "липнет" всегда, кроме ситуации ошибки
+    // ненулевая маска накладывается всегда, кроме ситуации ошибки
     // маска м.б. "прозрачная" для текста и\или цвета в.кнопки
     if (tm && v != 0xA777) v = (v & ~((tm & 0xf ? 0xf : 0) | (tm & 0xf00 ? 0xf00 : 0) | 0xf0f0)) | tm;
     let nK = sx + sp + (f?.name || "") + v + Z + tm; // текущий "контекст"
     if (lK == nK) return;    // "контекст" не изменился - перерисовывать нечего
     lK = nK;
-                              //vvvvvvvv ### debug vvvvvvvv
-    // //let bTxt = BT[v & 7] + (v >> 3 & 1 ? (f?.name || sf || "") : "");
-    // //let sTxt = v >> 12 & 1 ? sp + "%" : ST[v >> 4 & 7] + (v >> 7 & 1 ? (sf || "") : "");
-    //L(`-UX-\x20Z:${Z}\x20\x20M:0x${v0.toString(16)}\x20\x20tm:0x${tm.toString(16)}\x20\x20v:0x${v.toString(16)}`);
-    // //L(`-UX-\x20BT[${v & 7}]:"${bTxt}"`);      // для кнопок
-    // //L(`-UX-\x20ST[${v >> 4 & 7}]:"${sTxt}"`); // для статуса
-                              // ^^^^^^^^^ ### debug ^^^^^^^^^
     tm = v;
       // L-ниббл управляет текстом верхней кнопки
       // Биты 0..2 - индекс текста в массиве BT
@@ -403,74 +394,50 @@ const char INDEX_HTML[] PROGMEM = R"=====(
         // Цвет = с
         // приглушение (+ " cd"), когда ST[0]..ST[2] (u<3) и цвет в.кнопки != c6
         // акт.мерцание (+ " on bl"), бит_13=1 без Sticky
-        //b.className = `c c${v & 7} ${u < 3 ? "cd" : "on"} ${u & 8 ? "" : " bl"}`;
-          //vvvvvvvv # debug vvvvvvvvvv
-    //  let cN = "c c" + c + ((v < 8) && p ? " on bl" : (u < 3 && (c != 6) ? " cd" : ""));
-    //  L("-UX- BC: '" + cN + "'", "#2a6"); //lc.frM);
-    //  b.className = cN;
-          //^^^^^^^^ ### debug ^^^^^^^^^
     b.className = "c c" + c + ((v < 8) && p ? " on bl" : (u < 3 && (c != 6) ? " cd" : ""));
         // НИЖНЯЯ КНОПКА :
     g.style.width = sp + "%"; // ширина наложения шкалы прогресса
         // текст : Если бит_12 = 1, то пишем только %, иначе берем полученное ранее l = ST[]
     t.innerText = v & 1 ? sp + "%" : l;
         // Цвет = "c с5 on bl" если бит_13=1 либо выбор между цветом верхней кнопки (c), если бит_12=1
-        // ??приглушение (+ " cd"), если бит_12=1
-          //vvvvvvvv # debug vvvvvvvvvv
-    //  cN = v & 2 ? "c c5 on bl" : ("c c" + (v & 1 ? c : ("6" + (u != 6 ? " cb" : "")))) ; // если бит_13=0 - для прогресса берем цвет верхней кнопки
-    //  L("-UX- XС: '" + cN + "'", "#2a6"); //lc.frM);
-    //  x.className = cN;
-          //^^^^^^^^ ### debug ^^^^^^^^^
         // если бит_13=0 - для прогресса берем цвет верхней кнопки
     x.className = v & 2 ? "c c5 on bl" : ("c c" + (v & 1 ? c : ("6" + (u != 6 ? " cb" : "")))) ;
-          //vvvvvvvv # debug vvvvvvvvvv
-    //  cN = v & 4 ? "c c3 on bl" : "c cd";  // кнопка "SEND"
-    //  L("-UX- SС: '" + cN + "'", "#2a6"); //lc.frM);
-    //  s.className = cN ;
-          //^^^^^^^^ ### debug ^^^^^^^^^
-    s.className = v & 4 ? "c c3 on bl" : "c cd";  // кнопка "SEND"
-          //vvvvvvvv # debug vvvvvvvvvv
-    //  cN = v & 4 ? "c on bl" : "c cd";          // поле ввода G-команд
-    //  L("-UX- IС: '" + cN + "'", "#2a6"); //lc.frM);
-    //  i.className = cN;          // поле ввода G-команд
-          //^^^^^^^^ ### debug ^^^^^^^^^
-    i.className = v & 4 ? "c on bl" : "c cd";     // поле ввода G-команд
+        // кнопка "SEND"
+    s.className = v & 4 ? "c c3 on bl" : "c cd";
+        // поле ввода G-команд
+    i.className = v & 4 ? "c on bl" : "c cd";
     // фиксируем sticky эффект (Бит 15)
     if (v < 8) tm = 0;  // если 1 -> tm сбросится только в соотв. обработчике события
   }
         
   function L(m, c = "#fa5") {   // Лог (Log)
-    let v = new Date();
-    if ((sc & 1) && Z > 7) {  // только активист может сохранять лог
-            //vvvvvvvv # debug vvvvvvvvvv
+    let v = new Date(), ts;
+    if (sc & 1) {  // все могут сохранять лог, если это разрешено на сервере
       // сообщения клиента идут без метки времени помещения в буфер сервера
       if (c == "#c32" || c == "#fa5") pt = "";
       // Добавляем штамп времени перед сообщением
       // Формат hh:mm:ss.ms
       ts = v.toTimeString().slice(0, 8) + '.' + v.getMilliseconds().toString().padStart(3, '0');
       lw.push(`${ts}\x20${nn}\x20${pt}\x20${m}`);
-          //^^^^^^^^ ### debug ^^^^^^^^^
       }
      else { lw = []; if (c == "#fa5") return; }
     v = document.createElement('div');
     v.style.color = c;
     v.innerText = m ;
-    //let v = document.createElement('div'); v.style.color = c; v.innerText = m;
-    if (c == "#a10") v.style.fontWeight = "bold"; // lc.sEr
-    //if (c == lc.cEr || c == lc.cSv) v.style.fontStyle = "italic";
-    if (c == "#c32" || c == "#fa5") v.style.fontStyle = "italic";
+    if (c == "#a10") v.style.fontWeight = "bold";                 // srvErr
+    if (c == "#c32" || c == "#fa5") v.style.fontStyle = "italic"; // clErr , clServ
     l.appendChild(v);
     if (l.childNodes.length > 200) l.removeChild(l.firstChild);
     // Внутри функции L(m, c) после l.appendChild(v)
     // Проверяем: если юзер отмотал вверх более чем на 60px - не скроллим (даем читать)
-    // Иначе - всегда прижимаем к низу.
-    if (l.scrollHeight - l.clientHeight <= l.scrollTop + 60) l.scrollTop = l.scrollHeight;  //isAtBottom
+    // Иначе - прижимаем к низу.
+    // Также, если первый символ строки равен ':' (терминальная команда), то прижимаем всегда
+    if (l.scrollHeight - l.clientHeight <= l.scrollTop + 60 || m[0] == ':') l.scrollTop = l.scrollHeight;
     //v.scrollIntoView({ behavior: 'smooth', block: 'end' }); // альтернативный , но ресурсоемкий способ
   }
 
-  function initUp(v = null, c = "#c32") { // lc.cEr
-    ir = wn = /*tm =*/ 0;
-    //if (tm != 0xA777) tm = 0;
+  function initUp(v = null, c = "#c32") { // default : clErr
+    ir = wn = 0;
     if (v) L(v, c);
   }
 
@@ -480,16 +447,15 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     ws = new WebSocket('ws://' + location.hostname + ':81'); ws.binaryType = 'arraybuffer';
     
     ws.onopen=()=> { 
-      initUp("Connected", "#eee");     //lc.sDb цветом чтобы точно напечатало
-      // initUp("Connected", "#fa5");  //lc.cSv);
+      initUp("Connected", "#eee");     // srvDbg цвет, чтобы точно напечатало
       // Авто-заявка после реконнекта
       if (f && cid) fSel();
     };
 
     ws.onclose=()=> { 
       w = clearTimeout(w); n.innerText = "OFFLINE"; n.className = "offline";
-      pt && initUp("WS closed");  // [if pt] чтобы избежать скроллинга при длительном дисконнекте
-      sc = pt = tt = sid = sp = 0; sf = "";
+      pt && initUp("WS closed");  // [if pt] чтобы избежать повтора сообщений при длительном дисконнекте
+      sc = pt = tt = sid = sp = 0; sf = ""; // в т.ч. сбросили pt при первом дисконнекте
       if (Z == 10) f = null;
       if (tm != 0xA777) tm = 0x0603; // T_WAIT если нет ошибки
       UX();
@@ -502,23 +468,16 @@ const char INDEX_HTML[] PROGMEM = R"=====(
       let d = e.data.byteLength >= 0 ? new TextDecoder().decode(e.data) : e.data;
       // Теперь d либо строка, либо (вдруг) Blob/объект. 
       // 1. Чтобы split не упал, проверяем, что d — это строка.
-      // формат пакета - <N>:payload_message
+      // формат пакета - <Time>:payload_message
       // 2. мин. размер пакета = 16 = 13 (time) + 2 (hc) + 1 (min data)
       if (typeof d != "string" || d.length < 16) return;
       pt = d.slice(0, 13);          // "12:34:56.789:" метка времени помещения пакета в буфер
       for (let hb of d.slice(13).split("\n")) {
-        //// формат Heartbeat - H:RndNum:State[:ActiveID[:Progress:Mode:File]]
+        //// формат Heartbeat - H:RndNum:State:ActiveID:ctrl[:Mode:Progress:File]
         let h = hb.split(":"), hc = h[0], v = hb.slice(2); // hc - это "H", "N" или "L"
         if (hc == "H") {
-              // vvvvvv ### debug vvvvv
-              //let hl = "";
-              //if (v != hS | tm != hm) {
-              //  L(`${pt}\x20-HB-\x20"${hb}"`); //lc.sDb);
-              //  hl = "-HB- tm : 0x" + tm.toString(16) + " >> ";
-              //}
-              // ^^^^^ ### debug ^^^^^
           // Ватчдог надписи: сбрасываем и взводим заново на 2.5 секунды
-          w = clearTimeout(w) || setTimeout(() => { n.innerText = "OFFLINE"; n.className = "offline";/* n.style.opacity = 1;*/ }, 2500);
+          w = clearTimeout(w) || setTimeout(() => { n.innerText = "OFFLINE"; n.className = "offline"; }, 2500);
           if (h.length > 2) {
             // Ручное присваивание для плавающего формата (Zopfli-стайл)
             sx  = +h[1] || 0; // id сессии сервера для контекста UX
@@ -544,26 +503,19 @@ const char INDEX_HTML[] PROGMEM = R"=====(
                                                 // если есть файл, но нет ID - пытаемся автоматом авторизоваться
               else E("Role lost");              // Active role was lost : Takeover
             }
-                  // vvvvvv ### debug vvvvv
-                  //if (hl) {
-                  //  L(hl + "0x" + tm.toString(16)); //lc.sDb);
-                  //  hS = v; hm = tm;
-                  //}
-                  // ^^^^^ ### debug ^^^^^
             // --- ТАКТОВЫЙ ГИСТЕРЕЗИС И ОТПРАВКА СИНХРОПАКЕТА ВРЕМЕНИ ---
             // --- СЧЕТЧИК ТАКТОВ НА ОСНОВЕ HB (стартовая пауза 4 сек, затем повтор каждые 5 минут) ---
             // --- При условии : либо мы активист и нет BIN передачи, либо сейчас нет активиста ---
-            if (tt++ == 4) (Z > 7 ? sc < 2 : !sid) && S("T:" + Math.floor(Date.now() / 1000 - new Date().getTimezoneOffset() * 60)); // Даем синхронизацию времени
+            if (tt++ == 4) (Z > 7 ? sc < 2 : !sid) && S("T:" + Math.floor(Date.now() / 1000 - new Date().getTimezoneOffset() * 60));
             tt > 303 && (tt = 4);               // (304 - 4) - 1 = ровно 300 секунд (5 минут) между синхропакетами
             UX();                               // отрисовка
           }
-        } else if (hc == "L") {
-          // Принудительный скролл, если терминальная команда
-          v[0] == ':' && (l.scrollTop = l.scrollHeight);
-          // Изящный маппинг: если первый символ в ключе - берем цвет и режем, иначе дефолт
+        } else if (hc == "L") {                 // строка сообщения в лог
+          // выбираем цвет по первому символу, либо 0 если нет совпадения
           let c = {">":"#28b", "<":"#2a6", ",":"#b80", "!":"#a10"} [v[0]];
+          // Изящный маппинг: если первый символ в ключе - берем цвет и режем, иначе дефолт
           L(c ? v.slice(1) : v, c || "#eee");
-        } else if (hc == "N" && cid == v) upNext();        // Запрос следующего чанка
+        } else if (hc == "N" && cid == v) upNext();   // адресный запрос следующего чанка
       }
     };
 
@@ -571,10 +523,8 @@ const char INDEX_HTML[] PROGMEM = R"=====(
   }
 
   function upNext() {
-                  // vvvvvv ### debug vvvvv
     L(pt + "\x20-NX-\x20CHUNK_REQ");
-                  // ^^^^^ ### debug ^^^^^
-    if (tm == 0x860D) tm = 0;        // UI будет обновлен ближайшим HeartBeat
+    if (tm == 0x860D) tm = 0;  // ближайшим HeartBeat UI будет обновлен, если висит T_LOAD после "Upload"
     if (!f) return;
     // СЛУЧАЙ А: Мы заняты чтением. Просто запоминаем наличие запроса.
     if (ir) { wn += 1; return; }
@@ -591,7 +541,7 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     let v = i.value.trim();
     if (v && cid && sid == cid) {
       S(v.toUpperCase()); i.value = "";
-      //if (window.innerWidth > 600) i.focus(); else i.blur();
+      // сохраняем фокус, если ПК
       ('ontouchstart' in window) ? i.blur() : i.focus();
     }
   };
@@ -618,23 +568,12 @@ const char INDEX_HTML[] PROGMEM = R"=====(
     // УНИВЕРСАЛЬНЫЙ СЕТЕВОЙ UX-МОСТ ДЛЯ ЛЮБЫХ УСТРОЙСТВ И HA
     i.onblur = () => { window.scrollTo(0, 0); }; // Возврат экрана на смартфонах
     if (window != window.top) document.body.style.overflow = "hidden"; // Защита iframe в HA
+    // 3. Стартовая отрисовка T_INIT
     UX();
     // 4. Запускаем связь
     connect(); 
   });
-  /*
-                  // vvvvvv ### debug vvvvv
-                  // можно вызвать в консоли отладчика для получения ссылки загрузки лога lw
-                  // но он требует https://
-                  function saveLog() {
-                    const b = new Blob(lw, {type: 'text/plain'});
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(b);
-                    a.download = `log_${Date.now()}.txt`;
-                    a.click();
-                  }
-                  // ^^^^^ ### debug ^^^^^
-  */
+
   // выгрузка лога по дв.клику по самому окну лога
   l.ondblclick = () => {
       const a = document.createElement('a');

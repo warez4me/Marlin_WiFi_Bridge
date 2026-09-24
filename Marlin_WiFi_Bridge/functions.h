@@ -1,3 +1,4 @@
+#include <sys/types.h>
 /*
  * Copyright (c) 2026 warez4me
  * 
@@ -38,12 +39,12 @@ void uart2serial();
 inline uint32_t ringBufferPut(uint32_t, const uint8_t*, uint32_t);
 inline uint32_t ringBufferGet(uint32_t, uint8_t*, uint32_t);
 bool netQueFlush(uint32_t, bool);
-bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg = (char*)(""), uint8_t cid = CID_ALL);
+bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg = NULL, uint8_t cid = WS_ALL);
 inline bool netQuePut_pre(uint8_t* msg, int32_t msgSize, char* preMsg) {
   return netQuePut(msg, msgSize, preMsg);
 }
 inline bool netQuePut_cid(uint8_t* msg, int32_t msgSize, uint8_t cid) {
-  return netQuePut(msg, msgSize, (char*)(""), cid);
+  return netQuePut(msg, msgSize, NULL, cid);
 }
 void netQueSend();
 void netQueClean();
@@ -60,6 +61,7 @@ int confirmStr(strMem_t*, char*, size_t);
 inline void fListGet(int showBegIdx = 0);
 bool myBridgeCmd(char*, size_t);
 void printStat();
+void delFileGcode(BridgeState_t, uint32_t txDelay = 0);
 void sd_erase();
 
 /*--------------------------*/

@@ -318,8 +318,9 @@ static const gAnswer_t gAnswer[] PROGMEM __attribute__((aligned(4))) = {
 #define MQTT_SUB    0x800
 #define FULL_STAT   0x1000
 
-uint32_t ctrl = 0;  // переменная маски управления выводом лога
+uint32_t ctrl = 0;                  // маска управления выводом лога отладки
 //uint32_t ctrl = CLIENT_LOG | UART_LOG | SERV_LOG;  // если сразу нужна отладка ставим по вкусу
+bool dBroadcast = false;            // управление режимом вывода лога отладки : true == всем / false == активисту
 
 // ----- структура для листинга файлов -----
 struct sdFile_t {

@@ -112,6 +112,7 @@ void prnFix(int src, bool prnDetected) {
    else
     bridgeState = ((prnDetected)? SYS_PRINT: SYS_IDLE);
   socket.progress = 0; socket.fSize = 0;
+  socket.clWS_ID = WS_NOONE; socket.clGroup_ID = SID_SYSTEM;
   if (!(ok.ack_status & ACK_SELECTED) || !prnDetected) {
     socket.fName[0] = '\0'; }
   sdFile.selName = 0; sdFile.selIdx = 0; ok.ack_status &= ~ACK_SELECTED;
@@ -121,12 +122,9 @@ void prnFix(int src, bool prnDetected) {
   pubState = ((bridgeState == SYS_PRINT)? HB_PRINT: HB_WAIT);
   len = snprintf_P((char*)packet, NET_DATA_MAX,
                         PSTR("H:0:%d:%d:%d\nH:0:%d:%d:%d\nH:0:%d:%d:%d\nL:Print process %S\n"),
-                        HB_WAIT,
-                        (socket.clGroup_ID & 0xFFFF) + 1,        // +(сбросить активиста)
-                        ((ctrl & CLIENT_LOG) >> 4),
-                        HB_WAIT, (socket.clGroup_ID & 0xFFFF) + 1, ((ctrl & CLIENT_LOG) >> 4),
-                        pubState,
-                        (socket.clGroup_ID & 0xFFFF) + 1, ((ctrl & CLIENT_LOG) >> 4),
+                        HB_WAIT, SID_SYSTEM, ((ctrl & CLIENT_LOG) >> 4), // +(сбросить активиста)
+                        HB_WAIT, SID_SYSTEM, ((ctrl & CLIENT_LOG) >> 4),
+                        pubState, SID_SYSTEM, ((ctrl & CLIENT_LOG) >> 4),
                         ((prnDetected)? PSTR("detected"): PSTR("terminated")));
   netQuePut(packet, -len);    // urgent HeartBeat
 }
@@ -224,15 +222,14 @@ int fileID(bool nameSearch, uint32_t fIdxSize, bool setPrint) {
   // поиска по индексу и парсинга в структуру sdFile
   // для файла, найденного по индексу при setPrint=true происходит переключение системы в состояние SYS_PRE_PRINT
   size_t len;
-  sdFile.fIdx = 0; sdFile.selIdx = 0; sdFile.selNum = 0;
-  for (char* fStrPtr = gAnswer_buf; fStrPtr < &gAnswer_buf[anchorIdx]; fStrPtr += (strlen(fStrPtr) + 1)) {
+  sdFile.fIdx = 1; sdFile.selIdx = 0; sdFile.selNum = 0;
+  for (char* fStrPtr = gAnswer_buf; fStrPtr < &gAnswer_buf[anchorIdx]; fStrPtr += (strlen(fStrPtr) + 1), sdFile.fIdx++) {
     // строка содержит "[path]<shortFName>' '<fSize>[' '<lohgFName>]"
     if (parseFileInfo(fStrPtr)) {   // пробуем заполнить структуру sdFile (ненулевой результат - ошибка)
       // здесь - парсинг не удался
       netQuePut(NULL, 0, (char*)PSTR("L:!Name list parse error.\n"), socket.clWS_ID);
       anchorIdx = gAnswer_idx = 0;  // сброс флага валидности списка имен (перечитать список файлов)
       break; }                      // выход из цикла
-    if (!((++sdFile.fIdx) & 0xF)) { ESP.wdtFeed(); yield(); }
     if (!nameSearch) {
       // в этом режиме - поиск по заданному индексу
       if (sdFile.fIdx < fIdxSize)
@@ -243,7 +240,7 @@ int fileID(bool nameSearch, uint32_t fIdxSize, bool setPrint) {
                                     // достижение конца цикла == индекс не найден, перечитать список
       }
     //здесь параметры поиска задают имя и размер
-    sdFile.selNum += ((fileInfo(1))? 1: 0); // подсчет совпадений по имени, фиксация sdFile.selIdx при совпадении размера
+    sdFile.selNum += !!fileInfo(1); // подсчет совпадений по имени, фиксация sdFile.selIdx при совпадении размера
     } // for (char* fStrPtr = gAnswer_buf;
   if (!nameSearch || !(anchorIdx)) {        // если !nameSearch - произошла ошибка парсинга либо индекс вне границ буфера
     // необходимо перечитать список файлов
@@ -257,10 +254,11 @@ int fileID(bool nameSearch, uint32_t fIdxSize, bool setPrint) {
     if (ok.setState == SYS_WAIT_M20) {
       sdFile.selName = nameSearch; ok.setState = SYS_IDLE;
       // получить список файлов с заданным режимом поиска
-      ok.skip = 1; ok.waiting = false;
+      ok.skip = 0; ok.waiting = sdScanOnly;
       sdTimer = SD_CHECK_PERIOD; fListWait = true; fListTOut = WAIT_FLIST_TIMEOUT;
-      len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M21\nM20 L \"%s\"\n"),
-                                            ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
+      if (!sdScanOnly) { ok.skip = 1; uart_w((char*)PSTR("M21\n")); }
+      len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M20 L \"%s\"\n"),
+                                        ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
       uart_w((char*)packet, len); }
     return -1;
     }
@@ -414,7 +412,6 @@ void showFileList(uint32_t toShow) {
       netQuePut(NULL, 0, (char*)PSTR("L:sh- !Name list corrupted. Rescan.\n"), socket.clWS_ID);
       fListGet(-1);                     // получаем список, параметры показа не трогаем
       return; }
-    if (!(sdFile.fIdx & 0xF)) { ESP.wdtFeed(); yield(); }
     fileInfo(); }
   size_t len = 0;
   if (ctrl & SERV_LOG) {
@@ -459,7 +456,7 @@ void logMsg(unsigned char mark) {
     if (mLen >= (NET_DATA_MAX - 3)) l_ptr[NET_DATA_MAX - 4] = '\x0'; // гарантируем допустимую длину
     uint32_t m_str = (uint32_t)mark;
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%s%s\n"), (char*)&m_str, l_ptr);
-    netQuePut(packet, len);
+    netQuePut_cid(packet, len, (((ctrl & UART_READ) || (ctrl & UART_ACK))? WS_ALL: socket.clWS_ID));
     }
 }
 
@@ -676,7 +673,6 @@ void getMarlin() {
             if (cmdMode) cmdMode -= 1;                  // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
             // для SYS_PRE_UPLD и sdAutoScan лог не выводим, иначе - маркируем для лога, если это 1й маркер строки
             if (logMark) logMark = ((bridgeState == SYS_PRE_UPLD) || (sdAutoScan))? '-': '<'; // '-' -> ID_ECHO
-            //logMark = '-'; // '-' -> ID_ECHO
             sdAutoScan = 0;
             prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
             break;
@@ -726,9 +722,12 @@ void getMarlin() {
             // gAnswer_idx соответствует позиции сразу _за_ терминирующим '\0'
             size_t nLen = (&gAnswer_buf[gAnswer_idx - 1] - prmValPtr);
             while (((bridgeState == SYS_IDLE) || (bridgeState == SYS_PRINT)) && (nLen > 5)) { // если строка длиннее мин.имени файла ("x.gco")
-              uint32_t extStr;
-              memcpy((uint8_t*)&extStr, (uint8_t*)&gAnswer_buf[gAnswer_idx - 5], 4);  // копируем ".gco" или (.g)"code"
-              if ((extStr != 0x45444F43) && (extStr != 0x65646F63) && (extStr != 0x4F43472E) && (extStr != 0x6F63672E)) break;
+              uint8_t *le_ptr = (uint8_t*)&gAnswer_buf[gAnswer_idx - 5];
+              // делаем из строки число (LE) для быстрого сравнения
+              uint32_t extStr = (le_ptr[0] | (le_ptr[1] << 8) | (le_ptr[2] << 16) | (le_ptr[3] << 24)) | 0x20202000 ; // "case insensitive"
+              if ((extStr != 0x4F43472E) && ((extStr | 0x00000020) != 0x65646F63)) break; // != "OCG." && != "EDOC"
+              //memcpy((uint8_t*)&extStr, (uint8_t*)&gAnswer_buf[gAnswer_idx - 5], 4);  // копируем ".gco" или (.g)"code"
+              //if ((extStr != 0x45444F43) && (extStr != 0x65646F63) && (extStr != 0x4F43472E) && (extStr != 0x6F63672E)) break;
               ok.ack_status |= ACK_SELECTED;
               if (bridgeState != SYS_PRINT) {
                 if (srvSync) {
@@ -770,8 +769,8 @@ void getMarlin() {
         bool canPut = ((gAnswer_idx + PACKET_BUF_SIZE) <= gBufSizeNow);
         if (!canPut)
           // после помещения текущей строки в буфере останется места меньше, чем PACKET_BUF_SIZE
-          netQuePut(NULL, 0, (char*)PSTR("L:!Too many files. Clean the SD.\n"));
-         else canPut &= (parseFileInfo(&gAnswer_buf[anchorIdx]) == 0); // пробуем заполнить структуру sdFile
+          netQuePut(NULL, 0, (char*)PSTR("L:!Too many files. Clean the SD.\n"));    // в лог всем
+         else canPut &= (parseFileInfo(&gAnswer_buf[anchorIdx]) == 0);              // пробуем заполнить структуру sdFile
         if (canPut) {
           // успех - заполняем буфер и попутно либо ищем совпадение с параметрами анонсируемого файла,
           // либо передаем порядковый индекс и инфо о файле на экран клиентам с учетом ограничения количества позиций размером страницы
@@ -783,8 +782,7 @@ void getMarlin() {
             if (sdFile.fIdx == 1) {
               // если задан поиск - в начале задаем режим учета размера и сбрасываем значение выбранного индекса
               checkSize = (int)sdFile.selIdx; sdFile.selIdx = 0; }
-            if (fileInfo(checkSize))            // проверяем совпадение в заданном режиме
-              sdFile.selNum += 1;               // считаем совпадения
+            sdFile.selNum += !!fileInfo(checkSize, !sdScanOnly); // проверяем и считаем совпадения в заданном режиме
             }
            else if ((sdFile.pageBegIdx) && (sdFile.fIdx >= sdFile.pageBegIdx) && (sdFile.fIdx < (sdFile.pageBegIdx + sdFile.pageSize)))
             fileInfo();                         // индекс в рамках страницы - передаем индекс и инфо о файле на экран клиентам
@@ -868,7 +866,7 @@ void getMarlin() {
           }
         break; }
       case ID_OK: {
-        if (sdAutoScan) sdAutoScan -= 1;          // флаг запрета вывода ошибок в лог
+        sdAutoScan -= !!(sdAutoScan);             // флаг запрета вывода ошибок чтения SD в лог при автоскане
         if (ok.skip) {
           ok.skip -= 1;
           if (ctrl & UART_ACK) logMark = 0;       // маркируем для лога "отладочным" маркером
@@ -891,20 +889,9 @@ void getMarlin() {
           }
         switch (bridgeState) {
           case SYS_PRE_UPLD: {
-            if (!sdIsOK) {
-              errCode |=  ERR_NO_SD_CARD; break; }
+            if (!sdIsOK) { errCode |=  ERR_NO_SD_CARD; break; }
             bridgeState = SYS_WAIT_M28;
             ok.waiting = true; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT;  // 5 sec
-            // сохраняем полный путь открываемого на запись файла в безопасной области памяти
-            // будем его использовать для удаления этого файла в случае возникновения ошибки в процессе записи
-            char* fullFilePath = &gAnswer_buf[(GANSWER_BUF_SIZE - (NUM_CHUNKS * CHUNK_SIZE)) - (2 * PACKET_BUF_SIZE)];
-            uint8_t* l_ptr = (uint8_t*)(fullFilePath++);                  // по смещению +1 пишем полный путь файла
-            len = snprintf_P(fullFilePath, 2 * MAX_FNAME_LEN, PSTR("%s%s"),
-                                                ((sdFile.wrkPLen)? sdFile.wrkPath: ""), socket.fName);
-            if (len > (2 * MAX_FNAME_LEN)) len = 2 * MAX_FNAME_LEN;       // на всякий случай ограничиваем
-            *l_ptr++ = len;                                               // по смещению +0 пишем получившуюся длину
-            // гарантируем терминатор \0 и дублируем длину по максимальному смещению
-            l_ptr += (2 * MAX_FNAME_LEN); *l_ptr++ = 0; *l_ptr = len;
             if (useBFT) {
               len = snprintf_P((char*)packet, NET_DATA_MAX - 3, PSTR("M28 B1\n"));
               seqBFT = -1;  // признак необходимости выполнения инициализации seqBFT и открытия файла
@@ -913,12 +900,13 @@ void getMarlin() {
               seqBFT = 0;  // доп.признак инициализации в ASCII режиме
               // Формируем команду M28 с именем, которое получили ранее через FILE:
               // устанавливаем пропуск ОК, ответного для M110 N0
-              len = snprintf_P((char*)packet, NET_DATA_MAX - 3, PSTR("M110 N0\nM28 \"%s\"\n"), fullFilePath);
+              len = snprintf_P((char*)packet, NET_DATA_MAX - 3, PSTR("M110 N0\nM28 \"%s%s\"\n"),
+                                                            ((sdFile.wrkPLen)? sdFile.wrkPath: ""), socket.fName);
               ok.skip = 1; ok.ack_status &= ~(ACK_OPEN_FAIL | ACK_WR_START); }
             uart_w((char*)packet, len);
-            if (ctrl & SERV_LOG) {
-              if (!useBFT) { l_ptr = (uint8_t*)memchr(packet, '\n', len); *l_ptr = '\\'; }
-              netQuePut(packet, len, (char*)PSTR("L:<"), (socket.clGroup_ID & 0xFFFF)? socket.clWS_ID: CID_NOONE); }
+            if ((ctrl & SERV_LOG) && !(ctrl & UART_SEND)) {
+              if (!useBFT) { uint8_t* l_ptr = (uint8_t*)memchr(packet, '\n', len); *l_ptr = '\\'; }
+              netQuePut(packet, len, (char*)PSTR("L:<"), socket.clWS_ID); }
             break; }
           case SYS_WAIT_M28:
             if (ok.setState == SYS_SD_ERASE) {
@@ -933,7 +921,7 @@ void getMarlin() {
                 netQuePut_cid(packet, len, socket.clWS_ID);
                 uint32_t pLen = sdFile.pathLen + sdFile.shortLen;
                 len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:M28_OK: op=%u pLen=%u for 0x%08lX \""),
-                                                                    (sdFile.opCode & 0x30000000), pLen, (uint32_t)sdFile.fInfo);
+                                                            (sdFile.opCode & 0x30000000), pLen, (uint32_t)sdFile.fInfo);
                 if (pLen) { memcpy(packet + len, (uint8_t*)sdFile.fInfo, pLen); len += pLen; }
                 packet[len++] = '\"'; packet[len++] = '\n';
                 netQuePut_cid(packet, len, socket.clWS_ID); }
@@ -980,9 +968,6 @@ void getMarlin() {
             break;
           case SYS_WAIT_M29:
             if (ok.setState == SYS_SD_ERASE) {
-              bridgeState = SYS_WAIT_M30;
-              ok.waiting = true; ok.skip = 0; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 5 sec
-              ok.ack_status &= ~(ACK_OPEN_FAIL | ACK_DEL_FAIL | ACK_DELETED);
               uint32_t pLen = sdFile.pathLen + sdFile.shortLen;
               if (ctrl & SERV_LOG) {
                 len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:M29_OK: op=%u pLen=%u for 0x%08lX \""),
@@ -990,10 +975,7 @@ void getMarlin() {
                 if (pLen) { memcpy(packet + len, (uint8_t*)sdFile.fInfo, pLen); len += pLen; }
                 packet[len++] = '\"'; packet[len++] = '\n';
                 netQuePut_cid(packet, len, socket.clWS_ID); }
-              txTimer = 2;                            // включаем задержку выдачи команды в UART ~0.2 сек.
-              uart_w((char*)PSTR("M30 \""));          // удаление файла с указанием короткого имени
-              if (pLen) uart_w(sdFile.fInfo, pLen);
-              uart_w((char*)PSTR("\"\n"));            // последовательность : M30 -> OK
+              delFileGcode(SYS_SD_ERASE, 2);          // задержка ~250 мсек, затем последовательность : M30 -> OK
               sdFile.keepCount += 1;                  // счетчик созданных
               if (ctrl & SERV_LOG) {
                 len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:M29_OK : (%d/%d) \""),
@@ -1015,20 +997,20 @@ void getMarlin() {
             printStat();
             break;
           case SYS_WAIT_M30: {
+            if (ctrl & SERV_LOG) netQuePut(NULL, 0, (char*)PSTR("L:M30_OK received\n"), socket.clWS_ID);
+            static uint32_t tryMem = 0;                                       // "флаг" повторной попытки
+            bool deleted = (ok.ack_status & ACK_DELETED), tryAgain = (tryMem != (uint32_t)sdFile.fInfo);
+            tryMem = 0; ok.ack_status = 0;                                    // очищаем флаги
             if (ok.setState == SYS_SD_ERASE) {
               bridgeState = SYS_SD_ERASE;
-              static uint32_t tryMem = 0;                                     // счетчик попыток
-              if (!(ok.ack_status & ACK_DELETED)) {
-                ok.ack_status &= ~(ACK_OPEN_FAIL | ACK_DEL_FAIL);             // очищаем флаги ошибок
-                if (tryMem != (uint32_t)sdFile.fInfo) {                       // попробуем удалить со второй попытки
-                  tryMem = (uint32_t)sdFile.fInfo;
+              if (!deleted) {
+                if (tryAgain) {
+                  tryMem = (uint32_t)sdFile.fInfo;                            // попробуем удалить со второй попытки
                   if (sdFile.opCode & 0x10000000) break;                      // если было просто удаление
                   uint8_t* op_ptr = (uint8_t*)strchr(sdFile.fInfo, '\2');     // если была комбинированная операция
                   if (op_ptr) { *op_ptr = 1; break; }                         // меняем код операции на просто удаление
                   }
-                errCode |= ERR_M30_OK_TOUT; tryMem = 0;                       // на третий раз выставляем флаг ошибки
-                break; }
-              ok.ack_status &= ~ACK_DELETED; tryMem = 0;
+                errCode |= ERR_M30_OK_TOUT; tryMem = 0; break; }              // на третий раз выставляем флаг ошибки
               sdFile.pageBegIdx += 1; sdFile.sizeCount += sdFile.fSize;       // счетчики удаленных/освобожденного места
               if (ctrl & SERV_LOG) {
                 len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:M30_OK : (%d/%d) \""),
@@ -1037,30 +1019,36 @@ void getMarlin() {
                 memcpy(packet + len, (uint8_t*)sdFile.fInfo, pLen); len += pLen;
                 len += snprintf_P((char*)(packet + len), NET_DATA_MAX - len, PSTR("\" deleted\n"));
                 netQuePut_cid(packet, len, socket.clWS_ID); }
-              sdFile.fInfo += (strlen(sdFile.fInfo) + 1); sdFile.fIdx += 1;   // смещаем индексы
-              if ((sdFile.pageBegIdx & 0xFFFF) == (sdFile.pageBegIdx >> 16))  // если все запланированные удалены
-                M20_Timer = 4;  // через ~500 мсек просканировать SD на наличие активного файла в рабочей папке и
-                                // в случае успеха - перейти к bridgeState == SYS_PRE_PRINT
-              }
+              sdFile.fInfo += (strlen(sdFile.fInfo) + 1);                     // смещаем индексы
+              // если все запланированные удалены - переполняем счетчик итераций цикла
+              sdFile.fIdx += (((sdFile.pageBegIdx & 0xFFFF) == (sdFile.pageBegIdx >> 16))? sdFile.maxIdx: 1);
+              } // if (ok.setState == SYS_SD_ERASE) {
              else {
-              M20_Timer = 4;    // через ~500 мсек просканировать SD на наличие активного файла в рабочей папке и
-                                // в случае успеха - перейти к bridgeState == SYS_PRE_PRINT
-              if (ctrl & SERV_LOG) netQuePut(NULL, 0, (char*)PSTR("L:M30_OK received\n"), socket.clWS_ID); }
-            ok.ack_status |= ACK_QRY_SIZE;  // учитывать размер при сканировании SD
+              if (!M30_Timer) break;                                          // далее только, если это удаление при ошибках загрузки
+              bridgeState = SYS_IDLE; M30_Timer = 0;
+              if (!deleted) {
+                if (tryAgain) {
+                  tryMem = (uint32_t)sdFile.fInfo;                            // попробуем удалить со второй попытки
+                  ok.ack_status |= ACK_OK; M30_Timer = 1; M30_Seq = 1; break;
+                } }
+              if (!socket.clFileSel) {                                        // если отвалился активист
+                socket.fSize = socket.progress = 0; socket.fName[0] = '\0'; } // удаляем параметры файла - они больше не нужны
+              anchorIdx = gAnswer_idx = 0; }
             break; }
           case SYS_WAIT_M23: {
             switch (ok.setState) {
               case SYS_PRE_PRINT:
+                // поскольку между выбором файла для печати и самим запуском была возможна навигация и потеря параметров выбранного файла
+                // нужно по хэш-коду его файловой записи заново найти её в буфере и распарсить в структуру sdFile
                 sdFile.fIdx = 1;
                 for (sdFile.fInfo = gAnswer_buf; sdFile.fInfo < &gAnswer_buf[anchorIdx]; sdFile.fInfo += (strlen(sdFile.fInfo) + 1), sdFile.fIdx++) {
-                  if (sdFile.pHash == csFInfo(sdFile.fInfo)) {
+                  if (sdFile.pHash == csFInfo(sdFile.fInfo)) {  // проверяем совпадение сохранённого и посчитанного хэш-кода для текущей итерации
                     if (!(parseFileInfo(sdFile.fInfo))) // пробуем заполнить структуру sdFile (ненулевой результат - ошибка)
                       if (cmpFPath() > 0)               // имя совпадает с сокетом, path совпадает с рабочим
                         break;                          // успешно найдена запись и заполнена sdFile
-                    sdFile.fInfo = &gAnswer_buf[anchorIdx] + 1;
-                    break; }
-                  if (!(sdFile.fIdx & 0x3F)) ESP.wdtFeed();
-                  }
+                    sdFile.fInfo = &gAnswer_buf[anchorIdx] + 1; // выводим за пределы буфера как признак ошибки
+                    break;
+                  } }
                 if (sdFile.fInfo >= &gAnswer_buf[anchorIdx]) {
                   // здесь - поиск и парсинг не удались
                   netQuePut(NULL, 0, (char*)PSTR("L:!Can't select file.\n"), socket.clWS_ID);
@@ -1083,7 +1071,7 @@ void getMarlin() {
                 break;
               case SYS_PRINT:
                 ok.setState = SYS_IDLE; bridgeState = SYS_PRINT;  //ok.ack_status &= ~ACK_SELECTED;
-                uart_w((char*)PSTR("M24\n"));             // запуск на печать
+                uart_w((char*)PSTR("M24\n"));           // запуск на печать
               default:
                 break;
               }
@@ -1210,12 +1198,12 @@ void getMarlin() {
           }
         if (ctrl & SERV_LOG) {
           len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR(
-                                          "L:sd-: fidx %d sNum %d sIdx %d\n"
-                                          "L:sd- beg %d pSz %d max %d\n" ),
+                                          "L:sdEnd: fidx %d sNum %d sIdx %d\n"
+                                          "L:sdEnd: beg %d pSz %d max %d\n" ),
                                           sdFile.fIdx, sdFile.selNum, sdFile.selIdx,
                                           sdFile.pageBegIdx, sdFile.pageSize, sdFile.maxIdx);
           netQuePut_cid(packet, len, socket.clWS_ID); }
-        if ((sdFile.fIdx) && (sdFile.selNum)) {
+        if ((sdFile.fIdx) && (sdFile.selNum) && !sdScanOnly) {
           len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Name found in %d folder(s).\n"), sdFile.selNum);
           if (socket.clFileSel)     // если в socket содержится "эталонная" инфа после выбора на диске клиента
             len += (snprintf_P((char*)packet + (len - 1), NET_DATA_MAX - (len - 1), PSTR("  Orig.size %u%S.\n"),
@@ -1225,8 +1213,9 @@ void getMarlin() {
           }
         if (sdFile.selIdx) {
           bridgeState = SYS_IDLE; ok.setState = SYS_IDLE;  // запрет рекурсии M20
-          fileID(false, sdFile.selIdx); // заполнить sdfile и установить bridgeState = SYS_PRE_PRINT
+          fileID(false, sdFile.selIdx, !sdScanOnly); // заполнить sdfile (и установить bridgeState = SYS_PRE_PRINT)
           }
+        sdScanOnly = false;
         break;
       /*case ID_CAP: {
         if ((*gDataPtr != 'A') && (*gDataPtr != 'a')) break;

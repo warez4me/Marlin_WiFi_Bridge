@@ -57,7 +57,8 @@ void writeFlash() {
     if (!(ch_req) && ((tNow - endReqT) > 50)) {
       endReqT = tNow;
       int32_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("N:%d\n"), (socket.clGroup_ID & 0xFFFF));
-      netQuePut_cid(packet, -len, socket.clWS_ID);  // == urgent
+      bool b_mem = dBroadcast; dBroadcast = false;
+      netQuePut_cid(packet, -len, socket.clWS_ID); dBroadcast = b_mem; // urgent
     } }
 }
 
@@ -99,6 +100,6 @@ bool setOTA() {
                     "L:,Ready to flash \"%s\"\n"
                     "L:,Tap \"Upload\" to start\n"),
                     socket.fName); }
-  netQuePut(packet, -len); // 3. Сообщение в лог
+  netQuePut_cid(packet, -len, socket.clWS_ID); // 3. Сообщение в лог
   return res;
 }

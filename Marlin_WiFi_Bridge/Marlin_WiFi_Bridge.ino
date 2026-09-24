@@ -66,7 +66,7 @@ struct SocketData {
   uint8_t clWS_ID;              // WebSocket идентификатор сессии браузера
   char fName[MAX_FNAME_LEN + 1];// буфер для имени файла
   };
-SocketData socket = {0, 0, 0, 0, false, 0, {0}};
+SocketData socket = {SID_NOONE, 0, 0, 0, false, WS_NOONE, {0}};
 
 struct ChunkBuffer {
   uint8_t* data;                // указатель на buf[CHUNK_SIZE];
@@ -98,7 +98,7 @@ int32_t seqBFT = 0;    // порядковый индекс пакета BFT, у
 uint32_t wd_BIN_Timer = 0, wd_ACT_Timer = 0, M20_Timer = 0, fListTOut = 0, M30_Timer = 0, otaTimer = 0, txTimer = 0;
 uint32_t sdTimer = SD_CHECK_PERIOD, sdAutoScan = 0;
 uint32_t errCast = 0, wsMap = 0, cmdMode = 0, M30_Seq = 0, fListScanned = FLIST_NOT_SCANNED;
-bool srvSync = false, fListWait = false, sdCanTry = true;
+bool srvSync = false, fListWait = false, sdCanTry = true, sdScanOnly = false;
 
 //////
 char svcBuf[SVC_BUF_SIZE];
@@ -157,11 +157,11 @@ void wifiConnect(bool init) {
   // каждую секунду производится изменение значения wifi_timer в сторону 0
   // в диапазоне значений wifi_timer -8..0..5 работаем в режиме WIFI_STA как клиент
   // в диапазоне значений wifi_timer -50..-10 работаем в режиме WIFI_AP как точка доступа для конфигурации системы
-  // при работе в конфигурационном AP режиме : раз в 10 сек обновляем таймер AP и восстанавливаем wifi_timer = -50
-  // при наличии статуса WL_CONNECTED значение wifi_timer здесь восстанавливается равным 5
+  // при работе в конфигурационном AP режиме : раз в 10 сек обновляем таймер AP и поддерживаем wifi_timer = -50
+  // при наличии статуса WL_CONNECTED значение wifi_timer поддерживается равным 5
   // при отсутствии статуса WL_CONNECTED значение wifi_timer уменьшается от 5 до 0 (за 5 секунд)
   // при значении wifi_timer == 0 изменяем значение до -8 и ждем подтверждения отключения ~3сек (-8 -> -5)
-  // при значении wifi_timer == -5 делаем попытку коннекта с роутером и ожидаем WL_CONNECTED
+  // при значении wifi_timer == -5 делаем попытку коннекта с роутером и ожидаем WL_CONNECTED ~5сек (-5 -> 0)
   // при получении WL_CONNECTED либо wifi_timer == 0 цикл возобновляется в зависимости от того, что получено раньше
   // переключение а режим AP производится функцией sta2ap() при невозможности получения WL_CONNECTED в течение 1 минуты
   // при этом wifi_timer начинает работать в диапазоне -50..-10 с восстановлением значения -50 через каждые 10 секунд
@@ -177,7 +177,7 @@ void wifiConnect(bool init) {
     if ((apTime <= 0)) ESP.restart(); // ждём коннект к AP 2 минуты, после чего перезагружаемся
     apTime -= ((apTime > 10)? 10: apTime); // декремент лимита по 10 сек.
     wifi_timer = -50; return; }       // удерживаем WiFi в режиме AP
-  static int netUpTime = 5;
+  static int netUpTime = 5;           // для инициализации служб после коннекта выделяем 5 секунд
   static int net_err = 0;
   if (WiFi.status() == WL_CONNECTED) {
     // Создаем уникальный ID сессии из аппаратного шума радиоэфира
@@ -207,14 +207,14 @@ void wifiConnect(bool init) {
 }
 
 void initWPath(char* msg, uint8_t cid) {
-  netQuePut_pre(NULL, 0, msg);
+  if (msg) netQuePut(NULL, 0, msg);
   // перед запуском операции загрузки или печати файла производится листинг с указанием рабочего пути
   // без этого, похоже Марлин не понимает дальнейших команд, содержащих полное имя файла с путем
   size_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:<M21\nM20 L \"%s\"\n"),
-                                        ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
-  if (ctrl & SERV_LOG) {
+                                                  ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
+  if ((ctrl & SERV_LOG) && !(ctrl & UART_SEND)) {
     packet[6] = '\x20';                       // маскируем '\n' для вывода в лог
-    netQuePut_cid(packet, len, (socket.clGroup_ID & 0xFFFF)? socket.clWS_ID: cid); packet[6] = '\n'; }
+    netQuePut_cid(packet, len, cid); packet[6] = '\n'; }
   sdFile.selName = 0; sdFile.selIdx = 0;      // ничего не искать и не показывать
   // сбрасываем указатель на запись о файле, индекс начала страницы показа, размер списка файлов
   sdFile.fInfo = NULL; sdFile.pageBegIdx = 0; sdFile.maxIdx = 0;
@@ -314,7 +314,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
     const char* flPtr = (const char*)pgm_read_ptr(&wsTypeName[(type < WSTYPE_ILLEGAL)? (uint)type: WSTYPE_ILLEGAL]);
     if (flPtr) {
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:-wsTYPE- %S\n"), flPtr);
-      netQuePut_cid(packet, len, (socket.clGroup_ID & 0xFFFF)? socket.clWS_ID: num);
+      netQuePut_cid(packet, len, num);
     } }
   static uint8_t tMasterID = 0xFF;
   uint32_t tNow = millis();
@@ -342,7 +342,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             br_announce(ANN_FILE_ILLEGAL, num, socket.clWS_ID); break; }
           if (bridgeState == SYS_WAIT_OTA) doReboot();
           static uint32_t tAnnounce = 0;                                  // для блокировки конкурентов
-          if (((tNow - tAnnounce) < 10000) && (num != socket.clWS_ID)) {
+          if ((((tNow - tAnnounce) < 10000) && (num != socket.clWS_ID)) || (M30_Timer)) {
             br_announce(ANN_ROLE_TIMEOUT, num, socket.clWS_ID); break; }  // блокируем конкурентные анонсы файлов на 10 сек
           char* fSize = strtok(msg, ":");
           char* fName = strtok(NULL, ":");
@@ -357,15 +357,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             uint32_t sizeCheck = strtoul(fSize, NULL, 10);
             if (ctrl & SERV_LOG) {
               len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:FReq \"%s\" | %d bytes\n"), fName, sizeCheck);
-              netQuePut_cid(packet, len, (socket.clGroup_ID & 0xFFFF)? socket.clWS_ID: num);
+              netQuePut_cid(packet, len, num);
               }
             if (sizeCheck < 2) {
               br_announce(ANN_FILE_EMPTY, num, socket.clWS_ID); //break;
-              socket.fSize = 0; socket.fName[0] = '\0'; // активизация клиента без выбора файла
+              socket.fSize = 0; socket.fName[0] = '\0';                   // активизация клиента без выбора файла
               }
              else {
               // готовим поиск по socket.fName & socket.fSize
-              socket.fSize = sizeCheck; strcpy(socket.fName, fName); // фиксируем параметры выбранного файла
+              socket.fSize = sizeCheck; strcpy(socket.fName, fName);      // фиксируем параметры выбранного файла
               ok.setState = SYS_WAIT_M20; // перечитать список при неудаче поиска
               fileID(true, socket.fSize); // искать точное имя+размер в раб. папке , вывод списка вариантов
                                           // в случае успеха - переключить bridgeState в SYS_PRE_PRINT
@@ -375,7 +375,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           len = snprintf_P((char*)packet, NET_DATA_MAX, ((fName)? PSTR("\"%s\"\n"): PSTR("No file selected.\n")), fName);
           netQuePut(packet, -len, (char*)PSTR("L::: "));
           br_announce(ANN_ROLE_TERMINATED, num, socket.clWS_ID, msgPrm);
-          if (socket.clWS_ID != num) ctrl = 0;          // сброс отладки, если сменился активист
+          if (socket.clWS_ID != num) { ctrl = 0; dBroadcast = false; }    // сброс отладки, если сменился активист
           socket.clGroup_ID = msgPrm; socket.clWS_ID = num; tAnnounce = tNow;
           pgs_flag = true;                // флаг "отложенного" сброса 100% прогресса в публикации MQTT
           break;
@@ -396,12 +396,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             for (int i = 0; i < 3; i++)
               len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("H:0:%d:%d:%d\n"),
                                 HB_ERROR,
-                                (socket.clGroup_ID & 0xFFFF)?               // сброс активиста, если он является источником
-                                  ((socket.clGroup_ID & 0xFFFF) + !!(num == socket.clWS_ID)): 0,
+                                (socket.clGroup_ID + !!(num == socket.clWS_ID)), // сброс активиста, если он является источником
                                 ((ctrl & CLIENT_LOG) >> 4));
-            netQuePut_cid(packet, -len, num);                               // urgent HB - переводим клиента в состояние "ошибка"
+            bool b_mem = dBroadcast; dBroadcast = false;
+            netQuePut_cid(packet, -len, num); dBroadcast = b_mem;           // urgent HB - переводим клиента в состояние "ошибка"
             if ((socket.clGroup_ID & 0xFFFF) && (num == socket.clWS_ID)) {  // (если от активиста - очищаем сокет)
-              socket.clGroup_ID = socket.fSize = socket.progress = 0;
+              socket.clGroup_ID = SID_NOONE; socket.clWS_ID = WS_NOONE; socket.fSize = socket.progress = 0;
               socket.fName[0] = '\0'; socket.clFileSel = false; }
             break; }
           init_chunks();              // полностью инициализируем конвейер буферов
@@ -451,7 +451,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           if (msgPrm != (socket.progress + bTotal))
             errCode |= ERR_END_ERR;       // "END:<f_size>" не соответствует сумме ("уже да" + "еще нет")
           if ((ctrl & TRANS_LOG) || (errCode & ERR_END_ERR))
-            netQuePut_cid(packet, len, socket.clWS_ID);
+            netQuePut_cid(packet, len, num);
           if (errCode & ERR_END_ERR)
             break;
           isEndOfFile = true;             // Помечаем, что новых BIN данных не будет (для логики финала BFT)
@@ -501,10 +501,10 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             }
           if (ctrl & SERV_LOG) {
             len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Print req %s\n"), msg);
-            netQuePut_cid(packet, len, (socket.clGroup_ID & 0xFFFF)? socket.clWS_ID: num); }
-          socket.fSize = sdFile.fSize; socket.progress = 0; pgs_flag = true; // флаг "отложенного" сброса 100% прогресса в публикации MQTT
+            netQuePut_cid(packet, len, num); }
+          socket.fSize = sdFile.fSize; socket.progress = 0; pgs_flag = true;  // флаг "отложенного" сброса 100% прогресса в публикации MQTT
           bridgeState = SYS_WAIT_M23; ok.setState = SYS_PRE_PRINT;
-          initWPath((char*)PSTR("L::: Print started.\n"), num); // "инициализация" рабочего пути
+          initWPath((char*)PSTR("L::: Print started.\n"), num);               // "инициализация" рабочего пути
           break;
         case MSG_TIME: {
           // синхропакет времени от активного клиента либо от первого подключенного при отсутствии активиста
@@ -522,12 +522,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
           settimeofday(&tv, NULL);
           if ((time(nullptr) > 1451616000) && !syncReported) {
             // после первой синхронизации сообщаем всем подключенным клиентам инфо о системе
-            syncReported = true; showTime(CID_ALL); }
+            syncReported = true; showTime(WS_ALL); }
           if (ctrl & SERV_LOG) {
             len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Time sync WS: %u, Role: none\n"), tMasterID);
-            if (socket.clGroup_ID & 0xFFFF) {
+            if (socket.clGroup_ID != SID_NOONE) {
               len -= 5;
-              len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("%u\n"), socket.clGroup_ID & 0xFFFF); }
+              len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("%u\n"), socket.clGroup_ID); }
             netQuePut_cid(packet, len, tMasterID); }
           break; }
         case MSG_SCREAM: {
@@ -614,7 +614,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                                 o_is_next, cN,
                                 cnTime, chunks[cN].chSeq, chunks[cN].offset, chunks[cN].len,
                                 ch_cnt);
-        netQuePut_cid(packet, len, socket.clWS_ID); }
+        netQuePut_cid(packet, len, num); }
       uint32_t cP = (ch_in + (NUM_CHUNKS - 1)) & (NUM_CHUNKS - 1);  // "предыдущий", последний опустевший буфер,
                                                                     // NUM_CHUNKS обязательно == 2 или 4
       if (!(ch_cnt) && ((chGotSeq > NUM_CHUNKS) && !isEndOfFile)) { // учитываем статистику после первого цикла заполнения всех буферов
@@ -632,36 +632,36 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             ch_req += 1, chReqSeq += 1 )
         len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("N:%d\n"), (socket.clGroup_ID & 0xFFFF));
       if (len) {
-        netQuePut_cid(packet, -((int32_t)len), socket.clWS_ID); // == urgent
+        bool b_mem = dBroadcast; dBroadcast = false;
+        netQuePut_cid(packet, -((int32_t)len), socket.clWS_ID); dBroadcast = b_mem; // == urgent
         if (ctrl & TRANS_LOG) {
           if (++req_mem == chReqSeq)
             len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("%u\n"), chReqSeq);
            else
             len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("%u..%u\n"), req_mem, chReqSeq);
-          netQuePut(packet, len, (char*)PSTR("L:pre-Request for N:"), socket.clWS_ID); }
+          netQuePut(packet, len, (char*)PSTR("L:pre-Request for N:"), num); }
         }
       break; }
     case WStype_DISCONNECTED:
-      wsMap &= ~(1 << (num & 7)); // сброс бита с номером клиента в общей карте подключений
+      wsMap &= ~(1 << (num & 7));                           // сброс бита с номером клиента в общей карте подключений
       // при отключении любого клиента - сбрасываем соответствующий бит в масках всех пакетов в очереди отправки
       // просто накладываем актуальное значение общей карты wsMap на поле header.cMap в заголовках всех сообщений в буфере
       netQueClean();
       if (num == socket.clWS_ID) {
         // если отключается активист - ставим флаг ошибки
-        // можно не обрывать печать, если это True-Stateless, но зафиксировать ошибку в логе стоит.
-        errCode |= ERR_WS_DISCONNECT;
-        // ctrl &= ~(UART_LOG & CLIENT_LOG & CLIENT_BIN & TRANS_LOG & MQTT_LOG & FULL_STAT); // сброс отладки кроме SERV_LOG
-        ctrl = 0;                                         // сброс отладки
-        socket.clGroup_ID <<= 16;                         // обнуляем в младшей половине слова + копируем в старшую половину
-        if (bridgeState != SYS_PRINT) {
-      /* !? */
-          socket.fSize = socket.progress = 0;
-          socket.fName[0] = '\0';
+        // печать можно не обрывать, но зафиксировать ошибку в логе стоит.
+        errCode |= ERR_WS_DISCONNECT; socket.clWS_ID = WS_NOONE;  // присваиваем "пустое" значение
+        if (!dBroadcast) ctrl = 0;                          // сброс отладки, если не включено для всех
+        socket.clGroup_ID <<= 16;                           // обнуляем в младшей половине слова + копируем в старшую половину
+        socket.clFileSel = false;                           // при дисконнекте снимаем флаг локального выбора файла
+        if ((bridgeState < SYS_WAIT_M28) || ((bridgeState > SYS_WAIT_M29) && (bridgeState != SYS_PRINT))) {
+          socket.fSize = socket.progress = 0;               // если шла печать файла или его загрузка,
+          socket.fName[0] = '\0';                           // параметры файла сохраним, (в последнем случае - для его удаления)
         } }
-      if (num == tMasterID) tMasterID = 0xFF;             // если отключился "мастер времени" - сбрасываем его идентификатор
+      if (num == tMasterID) tMasterID = 0xFF;               // если отключился "мастер времени" - сбрасываем его идентификатор
       break;
     case WStype_CONNECTED:
-      wsMap |= (1 << (num & 7));                          // установка бита с номером клиента в общей карте подключений
+      wsMap |= (1 << (num & 7));                            // установка бита с номером клиента в общей карте подключений
       if ((bridgeState == SYS_SYNC_ERROR) || (time(nullptr) > 1451616000)) showTime(num); // сообщаем подключившемуся клиенту тек. дату/время
       break;
     default:
@@ -797,7 +797,9 @@ void countData(uint32_t addCount) {
       ch_cnt -= 1; ++ch_out &= (NUM_CHUNKS - 1); // корректируем число свободных буферов, сдвигаем индекс приемника
       if ((ch_cnt + ch_req) < NUM_CHUNKS) {
         len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("N:%d\n"), (socket.clGroup_ID & 0xFFFF));
-        netQuePut_cid(packet, ((isEndOfFile)? len: -(len)), socket.clWS_ID); ch_req += 1; chReqSeq += 1; // (not)urgent
+        bool b_mem = dBroadcast; dBroadcast = false;
+        netQuePut_cid(packet, ((isEndOfFile)? len: -(len)), socket.clWS_ID); dBroadcast = b_mem; // (not)urgent
+        ch_req += 1; chReqSeq += 1;
         if (ctrl & TRANS_LOG) {
           len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:gone-Request for N:%u\n"), chReqSeq);
           netQuePut_cid(packet, len, socket.clWS_ID); }
@@ -908,7 +910,7 @@ void putMarlin() {
       // 1. Считаем суммарно доступные байты в очереди (Peek)
       size_t avail1 = 0;
       uint8_t nextIdx = (ch_out + 1) & (NUM_CHUNKS - 1); // (ch_out + 1) % NUM_CHUNKS;
-      if (ch_cnt > 1) {       // Для NUM_CHUNKS > 2 здесь должен быть цикл по ch_cnt
+      if (ch_cnt > 1) {
         if (chunks[nextIdx].len >= chunks[nextIdx].offset)
           avail1 = chunks[nextIdx].len - chunks[nextIdx].offset;
         }
@@ -916,9 +918,8 @@ void putMarlin() {
       // 2. Шлем только полный пакет (BFT_SIZE) или финал файла
       //bool isFinal = (isEndOfFile && (ch_cnt == 1) && (avail0 < BFT_SIZE));
       //if ((total >= BFT_SIZE) || isFinal) {
-      if ((total >= BFT_SIZE) || isEndOfFile) {
-      //// 2. Шлем пакет
       //if (total) {  // если пакет короче BFT_SIZE, а дополнять неоткуда (ch_cnt == 1) - все равно шлем
+      if ((total >= BFT_SIZE) || isEndOfFile) {
         size_t sendLen = (total > BFT_SIZE) ? BFT_SIZE : total;
         // Сборка из первого буфера (или его остатка)
         size_t part0Len = (avail0 > sendLen) ? sendLen : avail0;
@@ -996,58 +997,63 @@ void checkTimers() {
         if (bridgeState == SYS_TRANSFER) errCode |= ERR_BIN_TOUT;
     if (wd_ACT_Timer)                                   // таймер таймаута чтения строки UART
       if (--wd_ACT_Timer == 0) errCode |= ERR_GANSWER_TOUT;
-    if (M30_Timer) {                                    // таймер реализации последовательности удаления файла при ошибке
+    if (M30_Timer) {                  // таймер реализации последовательности удаления файла при ошибке во время загрузки
       M20_Timer = 0;                                    // на всякий случай сбрасываем "родственный" таймер сканирования SD
-      uint32_t ackFlag = 0;
-      if ((M30_Seq >= 2) || (M30_Seq <= 7))             // определяем, какой флаг ожидается на текущем шаге
-        ackFlag = ((M30_Seq == 5) || (M30_Seq == 7))? ACK_SS: ACK_OK;
+      // ok.ack_status устанавливается в getMarlin() после контроля наличия активных M30_Timer и M30_Seq
+      uint32_t ackFlag = (M30_Seq == 1)? ACK_OK: 0;
+      if ((M30_Seq >= 3) && (M30_Seq <= 8))             // определяем, какой флаг ожидается на текущем шаге
+        ackFlag = ((M30_Seq == 6) || (M30_Seq == 8))? ACK_SS: ACK_OK;
       if (ok.ack_status & ackFlag) M30_Timer = 1;       // форсируем сброс таймера при наличии ожидаемого ответа
       if (--M30_Timer == 0) {
-        if (!(ok.ack_status & ackFlag) && (M30_Seq != 1)) { // если ожидаемый ответ не пришел (исключение: M30_Seq == 1)
+        if (!(ok.ack_status & ackFlag) && (M30_Seq != 2)) { // если ожидаемый ответ не пришел (исключение: M30_Seq == 2)
           netQuePut(NULL, 0, (char*)PSTR("L:!Can't delete! Check the SD.\n"));
           M30_Seq = 0; }                                // сбрасываем последовательность при отсутствии ответа Марлин
          else {
           ok.waiting = true; ok.skip = 0; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; }
         ok.ack_status &= ~(ACK_SS | ACK_OK); len = 0;
-        switch (M30_Seq) {                              
-          case 7:                                       // здесь начинаем при useBFT==true, имеем (ok.ack_status & ACK_SS)
+        switch (M30_Seq) {
+          case 8:                                       // здесь начинаем при useBFT==true, имеем (ok.ack_status & ACK_SS)
             sendBFT(0, BFT_CLOSE);                      // выходим из режима BFT: SYNC -> CLOSE -> SYNC -> EXIT
             break;
-          case 6:                                       // здесь имеем (ok.ack_status & ACK_OK)
+          case 7:                                       // здесь имеем (ok.ack_status & ACK_OK)
             sendBFT(0, BFT_SYNC);
             break;
-          case 5:                                       // здесь имеем (ok.ack_status & ACK_SS)
-            sendBFT(0, BFT_EXIT); ok.skip = 1;
+          case 6:                                       // здесь имеем (ok.ack_status & ACK_SS)
+            sendBFT(0, BFT_EXIT); ok.skip = 1; useBFT = false;
             break;
-          case 4:                                       // здесь начинаем при useBFT==false, имеем (ok.ack_status & ACK_OK)
-            if (sdIsOK) {
-              len = snprintf_P((char*)packet, 8, PSTR("M22\n"));  // SD release
-              break; }
-            M30_Seq = 3;                                // если release было сделано автоматически ранее - проходим дальше
-          case 3:                                       // здесь имеем (ok.ack_status & ACK_OK)
-            len = snprintf_P((char*)packet, 8, PSTR("M21\n"));    // SD mount
-          case 2:                                       // здесь имеем (ok.ack_status & ACK_OK), даем + ~0.5сек на монтирование SD
-            break;
-          case 1: {                                     // здесь имеем ((ok.ack_status & (ACK_SS | ACK_OK)) == 0)
+          case 5:                                       // здесь начинаем при useBFT==false, имеем (ok.ack_status & ACK_OK)
+            if (sdIsOK) {                               // размонтируем SD, если автоматом это не сделано
+              len = snprintf_P((char*)packet, 8, PSTR("M22\n"));  // SD release G-code
+              break; }                                  //  -> UART
+            M30_Seq = 4;                                // если release было сделано автоматически ранее - проходим дальше
+          case 4:                                       // здесь имеем (ok.ack_status & ACK_OK), если M30_Seq== 4
+            len = snprintf_P((char*)packet, 8, PSTR("M21\n"));  // SD mount G-code
+          case 3:                                       // здесь имеем (ok.ack_status & ACK_OK), если M30_Seq== 3;
+            break;                                      //  -> UART, если M30_Seq== 4; даем + ~0.5сек на монтирование SD, если M30_Seq== 3;
+          case 2:                                       // здесь имеем ((ok.ack_status & (ACK_SS | ACK_OK)) == 0)
             if (ok.ack_status & ACK_OPEN_FAIL) {        // если файл не был открыт - удалять нечего
               len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Just try again..\n"));
               ok.ack_status = 0; }                      // выйдем из switch() после netQuePut() через default
              else {
-              // получаем сохраненный полный путь, проверяем целостность записи и наличие терминатора \0
-              char* fullFilePath = &gAnswer_buf[(GANSWER_BUF_SIZE - (NUM_CHUNKS * CHUNK_SIZE)) - (2 * PACKET_BUF_SIZE)];
-              uint8_t pLen = *((uint8_t*)fullFilePath++); // длина строки записана в начале по смещению 0 и по макс. смещению в конце
-              if ((pLen == *((uint8_t*)(fullFilePath + (2 * MAX_FNAME_LEN) + 1))) && (!(*((uint8_t*)(fullFilePath + pLen))))) {
-                len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M30 \"%s\"\n"), fullFilePath);  // формируем команду удаления
-                bridgeState = SYS_WAIT_M30; break; }    // выходим из switch() штатно
+              sdScanOnly = true;                        // будем искать socket.fName в раб. папке, quiet mode
+              gAnswer_idx = anchorIdx = 0;              // сбрасываем флаг валидности буфера имен
+              ok.setState = SYS_WAIT_M20;               // флаг запроса чтения списка с SD
+              fileID(true, 0, false);                   // без учёта размера, состояние системы не менять, + флаг для откл. вывода в лог
+              M30_Timer = WAIT_FLIST_TIMEOUT; break; }  // выходим из switch() штатно (M30_Seq = 2, len = 0)
+          case 1:                                       // здесь имеем (ok.ack_status ACK_OK)
+            if (M30_Seq == 1) {
+              if (sdFile.selIdx) {                      // Если файл нашёлся - будем его удалять
+                delFileGcode(SYS_IDLE, 1); break; }     // выходим из switch() штатно, через ~250 мсек - последовательность : M30 -> OK
               len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:!Name was lost. Can't remove..\n")); }// при ошибке проходим к сбросу последовательности
-            netQuePut(packet, len); }
+            netQuePut(packet, len);
           default:
             M30_Seq = 0;
+            gAnswer_idx = anchorIdx = 0;                // сбрасываем флаг валидности буфера имен
             break;
           }
         if (M30_Seq) {
-          M30_Timer = (--M30_Seq != 0)? 4: 0;
-          if (len) { uart_w((char*)packet, len, true); useBFT = false; } } // пишем в UART
+          M30_Seq -= 1; M30_Timer += 4;
+          if (len) uart_w((char*)packet, len, true); }  // пишем в UART, если были команды G-code
       } } // if (M30_Timer) 
     if (M20_Timer)                                      // таймер запуска получения листинга SD с поиском
       if (--M20_Timer == 0) {
@@ -1061,6 +1067,8 @@ void checkTimers() {
       if (--fListTOut == 0) {
         errCode |= (ERR_FLIST_TOUT & fListScanned); fListScanned = FLIST_SCANNED; // блокируем повторение сообщений
         fListMode = false; fListWait = false; sdIsOK = false, sdAutoScan = 0;
+        if (M30_Timer) {                                // если в режиме удаления после ошибки загрузки
+          M30_Timer = 1; M30_Seq = 10; sdScanOnly = false; }  // форсируем сообщение об ошибке
         gAnswer_idx = anchorIdx = 0;                    // сбрасываем флаг валидности буфера имен
         if (sdFinal) sdChecked = true; }                // разрешаем heartbeat даже при отсутствии SD
     if (txTimer)                                        // таймер задержки выдачи команды в UART
@@ -1113,11 +1121,12 @@ void checkErrors() {
   const char* msgPtr = (const char*)pgm_read_ptr(&brStateName[bridgeState]);
   memset(packet, 0, PACKET_BUF_SIZE);
   if (ctrl & SERV_LOG)
-    snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:![%S] error(s) :\n"), msgPtr);  // +[bridgeState]
+    snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:![%S] error(s) :\n"), msgPtr);  // [bridgeState]+
   uint32_t eCode = 1;                                         // макс. 32 ошибки
   uint32_t gID = socket.clGroup_ID & 0xFFFF;                  // gID находится в младшей половине
   if ((errCode & ERR_WS_DISCONNECT) && !(gID)) {              // при дисконнекте активиста gID в младшей половине обнуляется
-    gID = socket.clGroup_ID >> 16; socket.clGroup_ID = 0; }   // используем копию его gID, временно созданную в старшей половине
+    gID = socket.clGroup_ID >> 16;                            // используем копию его gID, временно созданную в старшей половине
+    socket.clGroup_ID = SID_NOONE; }                          // сбрасываем идентификатор активиста в системе
   for (uint16_t errIdx = 0; (eCode) && (eCode <= errCode); errIdx++, eCode <<= 1)
     if (errCode & eCode) {                                    // если битовый флаг (==eCode) установлен
       msgPtr = (const char*)pgm_read_ptr(&msgArray[errIdx]);  // указатель на строку описания ошибки во флеш-памяти
@@ -1144,15 +1153,14 @@ void checkErrors() {
     errCast = 3;                                    // установка флага передачи err_sequence
     heartbeat(true); }                              // "срочный" heartbeat
    else if ((bridgeState >= SYS_WAIT_M28) && (bridgeState <= SYS_WAIT_M29)) { // Если шла запись файла — это фатально
-    // --- БЕЗОПАСНЫЙ СБРОС ПРИНТЕРА ---
     // блокируем интерфейс активного клиента + дополнительный лог сообщений об ошибках
     // Выходим из режима записи и, если файл был открыт - закрываем и удаляем с SD карты
     if ((bridgeState == SYS_WAIT_M28) && (ackStatus & ACK_OPEN_FAIL)) // Если не получилось даже открыть файл
       ok.ack_status |= ACK_OPEN_FAIL;
     if (useBFT) {                                   // из режима BFT выходим: SYNC->[CLOSE->SYNC->]EXIT
-      useBFT = false; sendBFT(0, BFT_SYNC); M30_Seq = ((ok.ack_status)? 5: 7); }  // пропускаем CLOSE, если ACK_OPEN_FAIL
+      useBFT = false; sendBFT(0, BFT_SYNC); M30_Seq = ((ok.ack_status)? 6: 8); }  // пропускаем CLOSE, если ACK_OPEN_FAIL
      else {
-      uart_w((char*)PSTR("M29\n")); M30_Seq = 4; }  // режим ASCII : закрываем файл, выходим из режима записи
+      uart_w((char*)PSTR("M29\n")); M30_Seq = 5; }  // режим ASCII : закрываем файл, выходим из режима записи
     ok.waiting = true; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT;
     M30_Timer = 4;                                  // через ~0.5сек - запуск последовательности удаления файла
     if (!(ok.ack_status)) {                         // если нет флага ACK_OPEN_FAIL - сообщаем об операции удаления
@@ -1160,7 +1168,7 @@ void checkErrors() {
         len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("eCode: 0x%08lX. Check the SD.\n"), errCode);
        else
         len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("Check the SD.\n"));
-      netQuePut(packet, len, (char*)PSTR("L:!Upload terminated. Removing...\nL:!")); }
+      netQuePut(packet, len, (char*)PSTR("L:!Upload terminated. Cleaning..\nL:!")); }
     socket.progress = 0;
     errCast = 3;                                    // установка флага передачи err_sequence
     heartbeat(true); }                              // "срочный" heartbeat
@@ -1242,7 +1250,7 @@ void heartbeat(bool forced) {
       (((socket.fSize == 0) || (socket.fName[0] == '\0')) && (hbState != HB_PRINT))) {        // формируем короткий формат HeartBeat
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("H:%u:%d:%d:%d\n"),
                                   sessionID, hbState,
-                                  (bridgeState == SYS_SYNC_ERROR)? 0x10000: (socket.clGroup_ID & 0xFFFF),
+                                  (bridgeState == SYS_SYNC_ERROR)? SID_SYSTEM: socket.clGroup_ID,
                                   hb_Ctrl);
     if (hbState != HB_PRINT) socket.progress = 0; }
    else {                                                                                     // формируем полный формат HeartBeat
@@ -1251,18 +1259,19 @@ void heartbeat(bool forced) {
     hb_Ctrl |= (f_bin << 1);                          // бит разрешения передавать бинарные чанки и контроля BIN-watchdog у клиента
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("H:%u:%d:%d:%d:%d:%d:%s\n"),
                                                   (sessionID + ((*socket.fName)? 0: 1)),      // для обновления UX, когда SYS_PRINT получает имя из notification
-                                                  hbState, (socket.clGroup_ID & 0xFFFF), hb_Ctrl, ((useBFT)? 1: 0), pgs, socket.fName);
+                                                  hbState, socket.clGroup_ID, hb_Ctrl, ((useBFT)? 1: 0), pgs, socket.fName);
     static uint32_t ctrlMem = 0;
     if (!forced && ((ctrl ^ ctrlMem) & CLIENT_LOG)) {                                         // бит CLIENT_LOG изменился
       if (ctrl & CLIENT_LOG)                                                                  // бит CLIENT_LOG установлен (лог включен)
         len += snprintf_P((char*)(packet + len), NET_DATA_MAX - len, PSTR("L:,Uptime %u msec\n"), hbTime);        // при отладке даем ориентир синхронизации
       ctrlMem = ctrl; }
     if (((bridgeState == SYS_PRE_UPLD) || (bridgeState == SYS_OTA)) && forced && !(chGotSeq)) {                   // момент старта файловой операции
-      len += snprintf_P((char*)(packet + len), NET_DATA_MAX - len, PSTR("N:%d\n"), (socket.clGroup_ID & 0xFFFF)); // присоединяем запрос самого первого чанка
+      len += snprintf_P((char*)(packet + len), NET_DATA_MAX - len, PSTR("N:%d\n"), socket.clGroup_ID); // присоединяем запрос самого первого чанка
       ch_req += 1; chReqSeq += 1; }                                                           // тек.кол-во запросов, последний запрошенный номер
     }
-  if (forced)
-    netQuePut_cid(packet, -((int32_t)len), socket.clWS_ID);
+  if (forced) {
+    bool b_mem = dBroadcast; dBroadcast = false;
+    netQuePut_cid(packet, -((int32_t)len), socket.clWS_ID); dBroadcast = b_mem; }
    else {
     netQuePut(packet, len);
     if (((bridgeState >= SYS_WAIT_M28) && (bridgeState <= SYS_WAIT_M29)) || (bridgeState == SYS_OTA)) {

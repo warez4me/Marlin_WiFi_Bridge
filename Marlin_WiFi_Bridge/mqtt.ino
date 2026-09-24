@@ -588,7 +588,7 @@ void mqttLoop() {
   static uint32_t lastMQTTLoop = 0;
   if ((now - lastMQTTLoop) < ((mqttSockData.sockState > MQTT_SOCKET_WAIT)? MQTT_LISTEN_LOOP : MQTT_REGULAR_LOOP)) return;
   lastMQTTLoop = now;
-  bool mqttActions = (mqttSockData.sockState <= MQTT_SOCKET_WAIT); // флаг разрешения опроса параметров принтера
+  bool mqttActions = (mqttSockData.sockState <= MQTT_SOCKET_WAIT); // флаг разрешения операций с топиками
   // 1. если сокет полностью отключен, запускаем инициализацию коннекта с брокером
   if (mqttSockData.sockState == MQTT_SOCKET_DISCONNECTED) {
     static uint32_t lastMQTTConnect = 0;
@@ -629,7 +629,7 @@ void mqttLoop() {
   // 3. Диспетчер операций с топиками
   /*--- 3.1 публикация данных ---*/
   if (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED) {
-    // здесь полный коннект с брокером - публикуем текущие значения параметров
+    // здесь полный коннект с брокером - можно публиковать текущие значения параметров
     static uint32_t pubTime = 0, pollTime = 0, tbPollTime = 0, xyzPollTime = 0, pgsPollTime = 0;
     int jsonLen = 0;
     // Отправляем данные через 50 мсек после обновления;
@@ -639,10 +639,10 @@ void mqttLoop() {
     // upTime и прогресс (upload progress) могут поступать без опроса
     // пакет с upTime отправляем автоматически раз в 5 секунд;
     // интервалы автоопроса prnFix() короче ручных, это предотвращает дублирование, если автоопрос поддерживается
-    if (((now - busyMarkerTime) < 2500) ||      // ждем 2.5 сек, если Марлин сообщил, что занят
-        ((bridgeState != SYS_IDLE) && (bridgeState != SYS_PRE_PRINT) && (bridgeState != SYS_PRINT)) ||
-        (ok.wdTimer) || (fListTOut) || (cmdMode) || uartWxStop) { // если отрабатываются ручные команды отладки или идет листинг файлов
-      // запрещаем опрос, сбрасываем таймеры интервалов по всем параметрам
+    if (((now - busyMarkerTime) < 2500) ||                                                              // если Марлин сообщил, что занят (ждем 2.5 сек)
+        ((bridgeState != SYS_IDLE) && (bridgeState != SYS_PRE_PRINT) && (bridgeState != SYS_PRINT)) ||  // если удаление или загрузка
+        (ok.wdTimer) || (M30_Timer) || (fListTOut) || (cmdMode) || uartWxStop) { // если отрабатываются ручные команды отладки или идет листинг файлов
+      // сбрасываем таймеры интервалов опроса по всем параметрам, запрещаем опрос
       tbPollTime = now; xyzPollTime = now; pgsPollTime = now; }
     if (pubTB && ((now - timeTB) >= 50) && ((now - pubTime) >= 50)) {
       // 3.1.1. ПАКЕТ ТЕМПЕРАТУР (Текущие + Целевые)
@@ -730,8 +730,8 @@ void mqttLoop() {
   // если попали сюда - нужно изменить состояние членов массива dState, т.е. анонсировать сущности для HA
   // в исходном состоянии и при дисконнектах значение для всех членов устанавливается равным DISCOVERY_EXPIRED
   // Общий алгоритм действий такой - сканируется массив dState и по очереди весь массив приводится к состоянию,
-  // когда все члены примут одинаковое общее значение, не равное DISCOVERY_EXPIRED
-  // причем, в текущем loop() допускается только одно обращение к брокеру
+  // когда все члены примут одинаковое общее значение, равное DISCOVERY_ANNOUNCED
+  // причем, в каждом текущем loop() допускается только одно обращение к брокеру
   // 1-й цикл переводит все DISCOVERY_EXPIRED   -> DISCOVERY_CONNECTED  ( + уничтожение сущностей по строкам конфигураций)
   // 2-й цикл :             DISCOVERY_CONNECTED -> DISCOVERY_ANNOUNCED  ( + публикация конфигураций и подписка cmd топиков)
   // Когда все члены массива примут состояние DISCOVERY_ANNOUNCED - можно публиковать значения параметров в топик /state

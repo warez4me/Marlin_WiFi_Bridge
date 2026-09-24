@@ -70,8 +70,9 @@ bool netQueFlush(uint32_t flushSize, bool countOnly) {
 bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg, uint8_t c) {
   if (wsMap == MAP_NOONE) {
     netBufBeg = netBufEnd; return true; } // сбрасываем очередь, если клиентов не осталось
-  if (c == CID_NOONE) return true;         // если безадресный пакет
-  if ((c != CID_ALL) && !(wsMap & (1 << c))) return true; // если вдруг адресат отключился
+  //if (c == WS_NOONE) return true;         // если безадресный пакет
+  if (dBroadcast) c = WS_ALL;
+   else if ((c != WS_ALL) && !(wsMap & (1 << c))) return true;  // если вдруг адресат отключился
   uint32_t mSize = ((msg)? ((msgSize >= 0)? msgSize: -msgSize): 0);
   uint32_t preSize = 0;
   if (preMsg && *preMsg) preSize = IS_PROGMEM(preMsg) ? strlen_P(preMsg) : strlen(preMsg);
@@ -83,8 +84,8 @@ bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg, uint8_t c) {
   netData_t header;
   header.time = millis();
   header.size = T_STR_SIZE + preSize + mSize;
-  header.cMap = ((c == CID_ALL)? CID_ALL: (1 << c));
-  header.cMap |= ((msgSize >= 0)? 0: ~CID_ALL);        // помечаем срочный пакет
+  header.cMap = ((c == WS_ALL)? WS_ALL: (1 << c));
+  header.cMap |= ((msgSize >= 0)? 0: WS_URGENT);                // помечаем срочный пакет
   // в начале каждого сообщения будет метка времени
   // получаем текущее время NTP и распечатываем в буфер
   struct timeval tv;
@@ -143,13 +144,13 @@ void netQueSend() {
     // Побайтовое извлечение заголовка (безопасно от Alignment Exception)
     for (size_t i = 0; i < sizeof(netData_t); i++, getIdx++)
       h_ptr[i] = netBuf[getIdx & NET_BUF_RING];
-    header.cMap &= (wsMap | ~CID_ALL);             // обрезаем по тек.общей карте, сохраняем флаг срочности
+    header.cMap &= (wsMap | WS_URGENT);                   // обрезаем по тек.общей карте, сохраняем флаг срочности
     if (queSize < (int32_t)(sizeof(netData_t) + header.size)) {
       // (маловероятно , но..) буфер "испортился" - сбрасываем
       netBufEnd = netBufBeg; errCode |= ERR_NET_QUE1_ERR;
       return;
       }
-    if (((header.cMap & CID_ALL) == MAP_NOONE) || (header.size > sizeof(netSendBuf))) {
+    if (((header.cMap & WS_ALL) == MAP_NOONE) || (header.size > sizeof(netSendBuf))) {
       //нет подключенных клиентов или нет адресата или превышение размера - пропускаем сообщение, очищаем очередь
       getIdx += header.size; netBufBeg = getIdx; queSize -= (sizeof(netData_t) + header.size);
       continue;
@@ -158,7 +159,7 @@ void netQueSend() {
     uint32_t goneTime = millis() - header.time;
     int active = ((socket.clGroup_ID & 0xFFFF)? 2: 0);
     uint8_t sendMap = header.cMap, i = ((active)? socket.clWS_ID: 0); // при наличии активиста начинаем с него
-    while ((i < WEBSOCKETS_SERVER_CLIENT_MAX) && ((sendMap & CID_ALL) != MAP_NOONE)) {
+    while ((i < WEBSOCKETS_SERVER_CLIENT_MAX) && ((sendMap & WS_ALL) != MAP_NOONE)) {
       if (sendMap & (1 << i)) {               // Если бит клиента установлен в общей карте и в карте передачи
         sendMap &= ~(1 << i);                 // каждый установленный бит в карте отрабатывается только раз за цикл
         // ПОДКАЧКА WDT И СТЕКА: Точка максимальной сетевой нагрузки
@@ -179,7 +180,7 @@ void netQueSend() {
           header.cMap &= ~(1 << i);           // убираем адрес из карты передачи
           if (active == 2) {
             // сюда можем попасть только в начале цикла, когда i == socket.clWS_ID
-            (header.cMap & ~CID_ALL)? stat(MTR_UCAST_GONE, goneTime): stat(MTR_BCAST_GONE, goneTime);
+            (header.cMap & WS_URGENT)? stat(MTR_UCAST_GONE, goneTime): stat(MTR_BCAST_GONE, goneTime);
             active -= 1; }
            else if (active == 0) {
             // сюда попадаем после первой удачной отправки, когда нет активиста
@@ -188,10 +189,10 @@ void netQueSend() {
       if (active > 0) { // активиста отработали в первую очередь: =1 после усп.отправки, =2 если отправки не было
         active -= 2; i = ((i)? 0xFF: 0); } // продолжаем цикл через (0xFF -> 0), если активист был ненулевой
       i += 1;
-      }
-    if (header.cMap & CID_ALL) {
+      } // while
+    if (header.cMap & WS_ALL) {
       // еще не всем клиентам передано
-      if (header.cMap & ~CID_ALL) {
+      if (header.cMap & WS_URGENT) {
         // это срочное сообщение :
         // - просто возврат без сдвига индексов до следующего loop()
         // - если более 100 мсек не получается передать - сброс индексов, возврат с ошибкой
@@ -206,7 +207,7 @@ void netQueSend() {
         return;
       if ((socket.clGroup_ID & 0xFFFF) && (header.cMap & (1 << socket.clWS_ID)))
         netDrops += 1;
-      } // if (header.cMap & CID_ALL)
+      } // if (header.cMap & WS_ALL)
     netBufBeg = getIdx; queSize -= (sizeof(netData_t) + header.size);
     } // while (queSize > 0)
 }
@@ -221,7 +222,7 @@ void netQueClean() {
   int32_t cleanSize = (int32_t)(endIdx - queIdx);
   while (cleanSize > 0) {
     // 1. актуализируем cMap в буфере по известному смещению наложением актуальной общей карты подключений
-    netBuf[(queIdx + mapOffset) & NET_BUF_RING] &= (wsMap | ~CID_ALL);  // header.cMap &=
+    netBuf[(queIdx + mapOffset) & NET_BUF_RING] &= (wsMap | WS_URGENT);  // header.cMap &=
     // 2. вычитываем структуру заголовка целиком
     for (uint32_t i = 0; i < sizeof(netData_t); i++, queIdx++)
       h_ptr[i] = netBuf[queIdx & NET_BUF_RING];

@@ -88,11 +88,11 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
    else if (rssi >= -85) qWiFiIdx = 2;
   len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("L:,WiFi Rx:%S %d%%, %ld dBm\n"),
                           (const char*)pgm_read_ptr(&qWifiStr[qWiFiIdx]), qWiFi, rssi);
-  uint32_t wsConn = pgm_read_dword(wsNumber + wsMap); // &wsNumber[wsMap]
+  uint32_t wsConn = pgm_read_dword(wsNumber + wsMap);       // &wsNumber[wsMap]
   bool mqttOk = (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED);
   len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("L:,WS:%u connected   MQTT:%S\n"),
                     wsConn, ((mqttOk)? PSTR("Ok"): ((wifiState == WIFI_STATE_STA)? PSTR("No connection"): PSTR("Connecting.."))));
-  netQuePut_cid(packet, len, (show_cid & CID_ALL));
+  netQuePut_cid(packet, len, (show_cid & WS_ALL));
   qWiFiIdx = 0;
   if ((bridgeState != SYS_IDLE) && (bridgeState != SYS_PRE_PRINT)) {
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:,SD card: busy [%S]\n"),
@@ -106,12 +106,12 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:,SD card: '0', '+', '-' or <N> to rescan\n"));
   if (qWiFiIdx) len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("L:,Work path: \"%s\"\n"),
                                                                   ((sdFile.wrkPLen)? sdFile.wrkPath: "/"));
-  netQuePut_cid(packet, len, (show_cid & CID_ALL));
+  netQuePut_cid(packet, len, (show_cid & WS_ALL));
   // инфо о текущем выбранном файле выдаём только активисту по команде (I)
   if ((qWiFiIdx == 2) && (show_cid & 0xFFFF0000)) fileID(true, socket.fSize);
   // инфо для случая ошибки стартовой синхронизации с Марлин
   if (bridgeState == SYS_SYNC_ERROR)
-    netQuePut(NULL, 0, (char*)PSTR(
+    netQuePut(NULL, 0, (char*)PSTR(                         // в лог всем
                     "L:!:: SYSTEM LOCKDOWN / SYNC FAIL !\n"
                     "L:!UART errors detected; printer state unknown.\n"
                     "L:!Control is locked for safety.\n"
@@ -321,7 +321,7 @@ bool myBridgeCmd(char* msg, size_t length) {
         len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Work path: \"%s\"\n"), sdFile.wrkPath);
        else
         len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:Work path: \"/\"\n"));
-      netQuePut(packet, len);
+      netQuePut_cid(packet, len, socket.clWS_ID);
       break;
     case ID_FINDEX: {
       if (!(anchorIdx) || !(cmdID) || (cmdID > sdFile.maxIdx)) { // cmdID = индекс для поиска в списке файлов
@@ -435,7 +435,7 @@ bool myBridgeCmd(char* msg, size_t length) {
           matchFld = (numVal != 0x002A2D29);              // сейчас идет сканирование "совпадающей" папки
           delData.pathDelNum += 1; sdFile.sizeCount += 1; // кол-во соответствий : в тек.папке и общее
           delData.lastMark = (uint8_t*)(sdFile.fInfo + sdFile.pathLen + sdFile.shortLen); // указатель на метку
-          *delData.lastMark = 1;                          // подмена пробела после короткого имени = удалить файл
+          *delData.lastMark = 1;                          // подмена пробела после короткого имени == удалить файл
           }
         if (sdFile.fIdx == sdFile.maxIdx)                 // последняя запись в списке - подытожим для тек. папки
           if (delData.lastMark)                           // в этой папке было(ли) совпадение(я) ?
@@ -510,7 +510,9 @@ bool myBridgeCmd(char* msg, size_t length) {
       break; }
     case ID_DCLIENT: {
       if (hasNum) {
-        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG; }
+        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG;
+        dBroadcast = (numVal > 20);
+        }
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:,Client log now %d (%S).\n"),
                                       !!(ctrl & CLIENT_LOG), STATUS_ON_OFF((ctrl & CLIENT_LOG)));
       netQuePut_cid(packet, len, socket.clWS_ID);
@@ -575,7 +577,7 @@ bool myBridgeCmd(char* msg, size_t length) {
     case ID_DALL: {
       if (hasNum) {
         ctrl &= ~MQTT_LOG; ctrl &= ~UART_LOG;
-        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG;
+        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG; dBroadcast = (numVal > 20);
         if (numVal) ctrl |= SERV_LOG;   else ctrl &= ~SERV_LOG;
         if (numVal) ctrl |= TRANS_LOG;  else ctrl &= ~TRANS_LOG;
         if (numVal) ctrl |= ((numVal << 8) & MQTT_LOG);
@@ -746,6 +748,18 @@ void printStat() {
     }
 }
 
+void delFileGcode(BridgeState_t setState, uint32_t txDelay) {
+  bridgeState = SYS_WAIT_M30; ok.setState = setState;
+  ok.waiting = true; ok.skip = 0; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 5 sec
+  ok.ack_status &= ~(ACK_OPEN_FAIL | ACK_DEL_FAIL | ACK_DELETED);
+  txTimer = txDelay;                                        // задержка выдачи команды в UART (~0.2 сек.)
+  uart_w((char*)PSTR("M30 \""));                            // удаление файла : "путь + имя"
+  if (sdFile.pathLen) uart_w(sdFile.fInfo, sdFile.pathLen); // путь, если есть
+  if (sdFile.longName) uart_w(sdFile.longName);             // длинное имя, если есть
+   else uart_w(sdFile.fInfo + sdFile.pathLen, sdFile.shortLen); // в противном случае - короткое имя
+  uart_w((char*)PSTR("\"\n"));                              // 
+}
+
 void sd_erase() {
   size_t len;
   // выполнение разрешено только при bridgeState == SYS_SD_ERASE, когда получен (нет ожидания) ответ марлин
@@ -778,13 +792,8 @@ void sd_erase() {
       netQuePut_cid(packet, len, socket.clWS_ID); }
     switch (sdFile.opCode & 0x30000000) {
       case 0x10000000:                      // файл был помечен на удаление
-        bridgeState = SYS_WAIT_M30;
-        ok.waiting = true; ok.skip = 0; ok.setState = SYS_SD_ERASE; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 5 sec
-        txTimer = 2;                        // включаем задержку ~250 мсек выдачи команды в UART
-        uart_w((char*)PSTR("M30 \""));      // удаление файла с указанием короткого имени
-        uart_w(sdFile.fInfo, pLen);
-        uart_w((char*)PSTR("\"\n"));        // последовательность : M30 -> OK
-        return;                             // выходим из цикла до прихода завершающего последовательность "ОК" от марлин
+        delFileGcode(SYS_SD_ERASE, 2);      // задержка ~250 мсек, затем последовательность : M30 -> OK
+        return;                             // выходим из цикла до прихода завершающего последовательность "ОК" от Марлин
       case 0x20000000:                      // файл был помечен на удаление с предварительным созданием файла-placeholder
         bridgeState = SYS_WAIT_M28;
         ok.waiting = true; ok.skip = 0; ok.setState = SYS_SD_ERASE; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT; // 5 sec
@@ -813,12 +822,15 @@ void sd_erase() {
                                                       (sdFile.keepCount >> 16));
       }
     netQuePut(packet, len);
+    M20_Timer = 4;  // через ~500 мсек просканировать SD на наличие активного файла в рабочей папке и
+                    // в случае успеха - перейти к bridgeState == SYS_PRE_PRINT
+    ok.ack_status |= ACK_QRY_SIZE;  // учитывать размер при сканировании SD
     }
-   else
+   else {
     netQuePut(NULL, 0, (errCode == ERR_NO_ERRORS)?
                         (char*)PSTR("L:!SD erase: Can't get Name list.\n"):
-                        (char*)PSTR("L:!Error while deleting files.\n"), 
-              socket.clWS_ID);
+                        (char*)PSTR("L:!Error while deleting files.\n"));
+    anchorIdx = gAnswer_idx = 0;
+    }
   bridgeState = SYS_IDLE;
-  anchorIdx = gAnswer_idx = 0;
 }
