@@ -363,7 +363,7 @@ struct strMem_t {
 char gAnswer_buf[GANSWER_BUF_SIZE];
 uint32_t gAnswer_idx = 0, anchorIdx = 0, timeResend = 0, busyMarkerTime = 0;
 char* gDataPtr = NULL;
-bool fListMode = false, sdIsOK = true, samePos = true, PowerUp = false;
+bool fListMode = false, sdIsOK = true, samePos = true, ipKnown = false;
 
 #define RESEND_MAX 5
 

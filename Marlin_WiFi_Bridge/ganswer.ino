@@ -725,9 +725,7 @@ void getMarlin() {
               uint8_t *le_ptr = (uint8_t*)&gAnswer_buf[gAnswer_idx - 5];
               // делаем из строки число (LE) для быстрого сравнения
               uint32_t extStr = (le_ptr[0] | (le_ptr[1] << 8) | (le_ptr[2] << 16) | (le_ptr[3] << 24)) | 0x20202000 ; // "case insensitive"
-              if ((extStr != 0x4F43472E) && ((extStr | 0x00000020) != 0x65646F63)) break; // != "OCG." && != "EDOC"
-              //memcpy((uint8_t*)&extStr, (uint8_t*)&gAnswer_buf[gAnswer_idx - 5], 4);  // копируем ".gco" или (.g)"code"
-              //if ((extStr != 0x45444F43) && (extStr != 0x65646F63) && (extStr != 0x4F43472E) && (extStr != 0x6F63672E)) break;
+              if ((extStr != 0x6F63672E) && ((extStr | 0x00000020) != 0x65646F63)) break;     // != "ocg." && != "edoc"
               ok.ack_status |= ACK_SELECTED;
               if (bridgeState != SYS_PRINT) {
                 if (srvSync) {
@@ -800,7 +798,7 @@ void getMarlin() {
       gAnswer_idx = anchorIdx;                  // если неподдекживаемое сообщение - указатель приема в начало строки
       continue;                                 // продолжить считывание потока от Marlin
       }
-    if (!PowerUp) showIP();                     // в начале сеанса показываем IP
+    if (!ipKnown) showIP(gTime);                // периодически (30 сек) показываем IP до первого WS коннекта
     // отрабатываем информационные строки ответа
     bool ackBFT = false;
     uint32_t seqACK = 0;

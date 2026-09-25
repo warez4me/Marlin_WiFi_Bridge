@@ -59,6 +59,7 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
   // - инфо о количестве подключенных WS клиентов
   // - инфо о количестве файлов/папок на Sd карте
   // - инфо для гипотетического случая ошибки стартовой синхронизации с Марлин
+  ipKnown = true;             // можно больше не анонсировать IP адрес
   int len = 0;
   time_t now;
   struct tm* timeinfo;
@@ -120,13 +121,15 @@ void showTime(uint32_t show_cid) {    // cid [ | 0xFFFF0000 ]
                     "L:,Then reconnect or click \"Continue\"\n"));
 }
 
-void showIP() {                         // в начале сеанса показываем IP
-  if (fListMode || (wifi_timer <= 0)) return;
-  PowerUp = true;
-  bool txState = uartWxStop; uartWxStop = false;
+void showIP(uint32_t tNow) {
+  // периодически показываем IP до получения коннекта от первого WS клиента
+  static uint32_t ipLastShow = 0;
+  if ((ipLastShow) && ((tNow - ipLastShow) < 30000)) return;    // не чаще 1 раза в 30 секунд
+  if (wifi_timer <= 0) return;
+  ipLastShow = tNow;
   IPAddress ip = WiFi.localIP();
   size_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("M117 IP:%d.%d.%d.%d\n"), ip[0], ip[1], ip[2], ip[3]);
-  uart_w((char*)packet, len, true); uartWxStop = txState;
+  uart_w((char*)packet, len, true);
 }
 
 bool setWrkPath(bool show) {

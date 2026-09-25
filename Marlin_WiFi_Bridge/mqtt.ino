@@ -691,7 +691,13 @@ void mqttLoop() {
       // gData.progress - прогресс загрузки/печати вычисляется при обновлении в gAnswer()
       if ((gData.pubArea & 0xFFFF0000) != 0x02200000) {       // пока в младших 2-х байтах нет сохраненного индекса
         // Собираем плоский JSON для HA
-        const char* fNameStr = (*socket.fName)? socket.fName : fl2chr(PSTR("No file selected"));
+        char* fNameStr;
+        if (ipKnown)
+          fNameStr = (*socket.fName)? socket.fName : fl2chr(PSTR("No file selected"));
+         else {
+          IPAddress ip = WiFi.localIP();                      // публикуем вместо fName до получения первого WS коннекта
+          snprintf_P(svcBuf, sizeof(svcBuf), PSTR("%d.%d.%d.%d"), ip[0], ip[1], ip[2], ip[3]);
+          fNameStr = svcBuf; }
         jsonLen = snprintf_P((char*)packet, NET_DATA_MAX - 3, 
                     PSTR("{\"g\":\"%S\",\"u\":%lu,\"uf\":\"%02lu:%02lu:%02lu\",\"rssi\":%ld,\"p\":%lu,\"pf\":\"%s\"}"),
                     (const char*)pgm_read_ptr(&pubState_id[gState]), socket.mqttCtrl_ID, hr, min, fmt_sec, WiFi.RSSI(),

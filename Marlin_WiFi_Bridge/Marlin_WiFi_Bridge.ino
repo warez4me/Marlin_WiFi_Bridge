@@ -98,7 +98,7 @@ int32_t seqBFT = 0;    // порядковый индекс пакета BFT, у
 uint32_t wd_BIN_Timer = 0, wd_ACT_Timer = 0, M20_Timer = 0, fListTOut = 0, M30_Timer = 0, otaTimer = 0, txTimer = 0;
 uint32_t sdTimer = SD_CHECK_PERIOD, sdAutoScan = 0;
 uint32_t errCast = 0, wsMap = 0, cmdMode = 0, M30_Seq = 0, fListScanned = FLIST_NOT_SCANNED;
-bool srvSync = false, fListWait = false, sdCanTry = true, sdScanOnly = false;
+bool srvSync = false, fListWait = false, sdCanTry = true, sdScanOnly = false, uartAlive = false;
 
 //////
 char svcBuf[SVC_BUF_SIZE];
@@ -1099,6 +1099,7 @@ void checkTimers() {
         timeLastSync = 0; syncReported = false; // Останавливаем проверку до следующей синхронизации
         timeval tv = { .tv_sec = 0, .tv_usec = 0 };
         settimeofday(&tv, NULL);                // Сбрасываем RTC в 1970 год
+        ipKnown = false;                        // разрешаем публикацию IP на LCD и через MQTT
       } }
     if (wifi_timer) wifi_timer -= (wifi_timer > 0)? 1: -1;
     // Переменная wifi_timer > 0 гарантирует, что мы физически подключены к Wi-Fi
@@ -1107,7 +1108,8 @@ void checkTimers() {
     if ((wifi_timer == 8) && (bridgeState != SYS_SYNC_ERROR)) {
       uartOn(); lastUARTTime = tNow; }          // включаем UART через 2 сек после WiFi коннекта
     if ((tNow > 60000) && (wifiState == WIFI_STATE_STA)) {
-      sdChecked = true; if (!PowerUp) showIP(); } // принудительно разрешаем HB и показываем IP
+      // принудительно разрешаем HB и на вс.случай показываем IP, если Марлин "молчит"
+      sdChecked = true; if (!ipKnown && !uartAlive) showIP(tNow); }
     if (sdTimer)
       if (--sdTimer == 0) {
         sdCanTry = true; sdTimer = SD_CHECK_PERIOD; }
@@ -1314,7 +1316,7 @@ void loop() {
       getMarlin();        // UART опрашивается всегда
       tNow = millis();
       if (getMarlinRXTime) {
-        stat(MTR_RX_LOOP_TIME, (tNow - getMarlinRXTime)); lastUARTTime = tNow; }
+        stat(MTR_RX_LOOP_TIME, (tNow - getMarlinRXTime)); lastUARTTime = tNow; uartAlive = true; }
       if ((lState != bridgeState) && (ctrl & SERV_LOG)) {
         size_t len = snprintf_P((char*)packet, NET_DATA_MAX,
                               PSTR("L:getMarlin: %S -> %S\n"),
@@ -1348,7 +1350,7 @@ void loop() {
         if (pgsReset == PROGRESS_ZERO) pgsReset = PROGRESS_WAIT;
         // проверяем доступность SD карты и наличие списка файлов в памяти
         if (sdIsOK | uartWxStop) sdCanTry = true;
-        if (!(anchorIdx) && !uartWxStop)
+        if (!(anchorIdx) && (lastUARTTime))
           if (sdCanTry && ((tNow - lastUARTTime) > 1000) && !(M30_Timer | M20_Timer | fListWait)) {
             fListGet(65535);                                          // пытаемся прочитать SD карту
             sdCanTry = false; lastUARTTime = tNow; sdFinal = true;    // разрешаем поднять sdChecked при любом результате чтения SD

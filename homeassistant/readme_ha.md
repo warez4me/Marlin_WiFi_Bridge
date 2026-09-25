@@ -82,6 +82,9 @@ Follow these steps:
 The provided layout file [full_view_ui.yaml](/homeassistant/dashboard/) already includes a dedicated embedded panel section. Within that [configuration text](/homeassistant/dashboard/full_view_ui.yaml), you will find an explicit URL path property mapping directly to the bridge server resource:
 
 * **URL Endpoint:** For seamless integration inside the Home Assistant view container, always configure that source link using the dedicated sub-path: **`http://<YOUR_ESP_IP>/ha`**
+* **💡 Finding the IP Address:** If you don't know the current IP of your bridge, you can easily find it before your first WebUI connection:
+  * **On the Printer LCD:** The bridge broadcasts its address via the standard `M117` status line.
+  * **Inside Home Assistant:** Check the **`File name`** attribute of your Progress entity (**`sensor.<device_id>_p`**). The bridge automatically streams its active IP into this attribute until the first client connects.
 * **IP Address Management:** To avoid the hassle of editing your dashboard YAML every time your router assigns a new dynamic IP to the bridge, remember to lock the ESP8266 to a **Static IP** via your router's DHCP reservation page. This keeps your embedded layout working seamlessly without manual intervention.
 
 ## License & Acknowledgments
