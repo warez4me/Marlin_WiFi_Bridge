@@ -113,12 +113,10 @@ void prnFix(int src, bool prnDetected) {
     bridgeState = ((prnDetected)? SYS_PRINT: SYS_IDLE);
   socket.progress = 0; socket.fSize = 0;
   socket.clWS_ID = WS_NOONE; socket.clGroup_ID = SID_SYSTEM;
-  if (!(ok.ack_status & ACK_SELECTED) || !prnDetected) {
-    socket.fName[0] = '\0'; }
+  if (!(ok.ack_status & ACK_SELECTED) || !prnDetected) socket.fName[0] = '\0';
   sdFile.selName = 0; sdFile.selIdx = 0; ok.ack_status &= ~ACK_SELECTED;
-  sdFile.fInfo = NULL;        // сбрасываем указатель на запись о файле
-  sdFile.pageBegIdx = 0;      // сбрасываем индекс начала страницы показа
-  anchorIdx = gAnswer_idx = 0;
+  sdFile.fInfo = NULL; sdFile.pageBegIdx = 0; // сбрасываем параметры показа листинга файлов
+  anchorIdx = gAnswer_idx = 0;                // очищаем буфер листинга файлов
   pubState = ((bridgeState == SYS_PRINT)? HB_PRINT: HB_WAIT);
   len = snprintf_P((char*)packet, NET_DATA_MAX,
                         PSTR("H:0:%d:%d:%d\nH:0:%d:%d:%d\nH:0:%d:%d:%d\nL:Print process %S\n"),
@@ -126,12 +124,12 @@ void prnFix(int src, bool prnDetected) {
                         HB_WAIT, SID_SYSTEM, ((ctrl & CLIENT_LOG) >> 4),
                         pubState, SID_SYSTEM, ((ctrl & CLIENT_LOG) >> 4),
                         ((prnDetected)? PSTR("detected"): PSTR("terminated")));
-  netQuePut(packet, -len);    // urgent HeartBeat
+  netQuePut(packet, -len);                    // urgent HeartBeat
 }
 
 int parseFileInfo(char* if_ptr) {
   // строка содержит "[path]<shortFName><?><fSize>[' '<lohgFName>]"
-  // где <?> - пробел либо символ '\1' или '\2' как маркер выбора для операции с этим файлом
+  // где <?> - пробел либо символ-код '\1' или '\2' как маркер выбора для операции с этим файлом
   if (!(if_ptr)) return 1;                // недопустимый указатель - это не строка с именем файла
   if (*if_ptr < '0') return 2;            // недопустимый символ в начале - это не строка с именем файла
   sdFile.fInfo = NULL;                    // сбрасываем указатель на начало информационной строки
@@ -334,7 +332,7 @@ bool fileInfo(int mode, bool show) {
       packet[len++] = '\n'; packet[len] = 0; }
     netQuePut_cid(packet, len, socket.clWS_ID);
     }
-  // 1. в начале строки формируем: метку совпадения размера, индекс (выравнивание вправо), метку рабочей папки
+  // 1. в начале строки формируем: метку совпадения размера, индекс (выравнивание вправо), метку '.' рабочей папки
   uint brcIdx = !!((isWrkPath() && (csFInfo(sdFile.fInfo) == (sdFile.opCode & 0x0FFFFFFF))) || (res && (sdFile.selIdx == sdFile.fIdx)));
   if (!(brcIdx) && res && isWrkPath()) brcIdx = 2;
     if (ctrl & SERV_LOG) {
@@ -412,7 +410,7 @@ void showFileList(uint32_t toShow) {
       netQuePut(NULL, 0, (char*)PSTR("L:sh- !Name list corrupted. Rescan.\n"), socket.clWS_ID);
       fListGet(-1);                     // получаем список, параметры показа не трогаем
       return; }
-    fileInfo(); }
+    fileInfo(); }                       // показать каждую файловую запись 
   size_t len = 0;
   if (ctrl & SERV_LOG) {
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:shFL ptr%ca%d i%d b%d p%d x%d\n"),
@@ -456,7 +454,8 @@ void logMsg(unsigned char mark) {
     if (mLen >= (NET_DATA_MAX - 3)) l_ptr[NET_DATA_MAX - 4] = '\x0'; // гарантируем допустимую длину
     uint32_t m_str = (uint32_t)mark;
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%s%s\n"), (char*)&m_str, l_ptr);
-    netQuePut_cid(packet, len, (((ctrl & UART_READ) || (ctrl & UART_ACK))? WS_ALL: socket.clWS_ID));
+    //netQuePut_cid(packet, len, (((ctrl & UART_READ) || (ctrl & UART_ACK))? WS_ALL: socket.clWS_ID));
+    netQuePut(packet, len);
     }
 }
 
@@ -475,15 +474,6 @@ inline uint16_t xorCS(char* xStr, size_t len) {
 /*-------------------------------*/
 /*--- Marlin(UART) read/parse ---*/
 /*-------------------------------*/
-inline uint32_t sdCS(uint32_t csWord) {
-  for (uint32_t i = anchorIdx; i < gAnswer_idx; i++) {
-    csWord += (uint32_t)gAnswer_buf[i];
-    uint32_t xCS = (((uint32_t)gAnswer_buf[i] << 20) & 0xffff0000) | (((uint32_t)(~gAnswer_buf[i]) << 10) & 0x0000ffff);
-    csWord ^= xCS;
-    }
-  return csWord;
-}
-
 void doResend() {
   timeResend = 0;
   fData.totalTry += 1;
@@ -519,7 +509,7 @@ gAnswerID_t findID(char** dataStr, uint* dataID, bool orNum) {
         }
     *dataID += 1;
     }
-  // Если цикл while открутился и ничего не нашёл, то независимо от значения orNum - результат ID_NONE. 
+  // Если цикл while ничего не нашёл, то независимо от значения orNum - результат ID_NONE. 
   return ID_NONE; 
 }
 
@@ -534,7 +524,7 @@ void getMarlin() {
   uint uartSymLin = 0, uartSymAll = 0, uartEOL = 0;
   gDataPtr = NULL;
   unsigned char logMark = '\xff';           // флаг необходимости вывода в лог, а также цветовой маркер
-  BridgeState_t inState = bridgeState;
+  BridgeState_t inState = bridgeState;      // запоминаем состояние системы на входе
   static uint32_t gBufSizeNow = 0;
   enum drain_t {DRAIN_NONE = 0, DRAIN_FLAG, DRAIN_BREAK};
   drain_t drain = (drain_t)(!!(gAnswer_idx != anchorIdx));  // если индексы не равны - находимся в процессе приема строки ответа
@@ -559,14 +549,14 @@ void getMarlin() {
          ((errCode & ~ERR_PFT_BUSY) == ERR_NO_ERRORS) &&                      // нет ошибок, исключая ожидание статуса PFT
          (inState == bridgeState)                     &&                      // bridgeState не было изменено при парсинге
          ((netBufEnd - netBufBeg) < (NET_BUF_SIZE - (NET_BUF_SIZE >> 2)))) {  // заполнено менее 0.75 от размера сетевого буфера
-    stat(MTR_RX_BUF_SIZE, (uart_rx_buf_end - uart_rx_buf_beg));               // статистика
     uint32_t gTime = millis();
-    if (!(getMarlinRXTime))
-      getMarlinRXTime = (gTime)? gTime: 0xFFFFFFFF; // статистика
+    if (!(getMarlinRXTime)) {
+      getMarlinRXTime = (gTime)? gTime: 0xFFFFFFFF;                           // для расчёта статистики времени парсинга
+      STATISTICS(stat(MTR_RX_BUF_SIZE, (uart_rx_buf_end - uart_rx_buf_beg))); } // статистика размера очереди на считывание в начале парсинга
     wd_ACT_Timer = WAIT_ACT_TIMEOUT;            // 10 сек.
     if (logMark != '\xff') {                    // если (logMark != '\xff'), значит нужен лог строки после предыдущего прохода
       logMsg(logMark); logMark = '\xff'; }
-    if (drain == DRAIN_BREAK) break;            // возврат, если выставлен флаг на предыдущем проходе
+    if (drain == DRAIN_BREAK) break;            // возврат в loop(), если выставлен флаг на предыдущем проходе
     char c = uart_r_chr(); uartSymAll += 1;     // собственно считывание символа из кольцевого буфера RX
     if (c == '\r') continue;                    // пропуск лишних символов
     if (c != '\n') {
@@ -589,6 +579,7 @@ void getMarlin() {
       // аномально короткая строка ('\n')
       gAnswer_idx = anchorIdx; gAnswer_buf[gAnswer_idx] = '\0';
       continue; }
+    // здесь имеем строку для парсинга, начинающуюся с gAnswer_buf[anchorIdx] и терминированную '\0'
     gAnswer_buf[gAnswer_idx++] = '\0';          // оформляем (повторно) конец строки, смещаем текущий индекс приема
     if (gAnswer_idx <= (gBufSizeNow - 1)) gAnswer_buf[gAnswer_idx] = '\0'; // оформляем (предварительно) конец следующей строки
     if ((drain == DRAIN_FLAG) && (gBufSizeNow != gBufSizeLim)) 
@@ -609,11 +600,11 @@ void getMarlin() {
     char* prmIDptr = gDataPtr;
     do {
       if (!(prmIDptr) || !(*prmIDptr)) break;
-      prmIDptr = strpbrk(prmIDptr, "TBXYZESNtbxyzesn"); // пробуем найти в строке указатель на первый символ ID параметра
+      prmIDptr = strpbrk(prmIDptr, "TBXYZESNtbxyzesn"); // ищем ближайший указатель на первый символ возможного ID параметра
       if (!(prmIDptr)) break;
       char* prmValPtr = prmIDptr;
-      idID = (uint)ID_TEMP_T;
-      gAnswerID_t prmID = findID(&prmValPtr, &idID, false);
+      idID = (uint)ID_TEMP_T;                           // начало списка шаблонов (gcode.h)
+      gAnswerID_t prmID = findID(&prmValPtr, &idID, false); // определяем ID параметра, ставим prmValPtr сразу после ID
       if (prmID != ID_NONE) {
         hasPrm += 1;
         float fval1 = 0, fval2 = 0;
@@ -627,41 +618,41 @@ void getMarlin() {
             // 2. Пропускаем любые пробелы после числа, двигаем указатель prmValPtr вперед
             while (prmValPtr && isspace((unsigned char)*prmValPtr)) { 
               prmValPtr++; }
-            // 3. Теперь prmValPtr смотрит ровно на слэш. Если он там есть — парсим целевую температуру
+            // 3. Теперь prmValPtr указывает на позицию слэша. Если он там есть — парсим целевую температуру
             if (prmValPtr && (*prmValPtr == '/'))
               // prmValPtr + 1 перепрыгивает слэш. strtof сама пропустит пробелы после слэша, если они там будут
               fval2 = strtof(prmValPtr + 1, &prmValPtr);
              else fval2 = 0.0;              // Страховка, если целевой температуры почему-то нет в строке
-            updFloatValue(prmID, gTime, fval1, fval2);
+            updFloatValue(prmID, gTime, fval1, fval2);  // выкладываем на публикацию
             break; }
           case ID_POS_X: {
             static strMem_t lMem = {0, 0, 0};
             static uint32_t newPosTime = 0;
             if (confirmStr(&lMem, gDataPtr, &gAnswer_buf[gAnswer_idx - 1] - gDataPtr) < 0) newPosTime = gTime;
              else if (srvSync && (lMem.mLen)) samePos = false;
-            if (((gTime - newPosTime) >= 15000) && (socket.fSize))              // ~15 сек на месте
+            if (((gTime - newPosTime) >= 15000) && (socket.fSize))  // ~15 сек на месте
               if ((socket.progress == socket.fSize) && (bridgeState == SYS_PRINT))
-                prnFix(1) ;                                                     // сбрасываем состояние в SYS_IDLE
+                prnFix(1) ;                                         // сбрасываем состояние в SYS_IDLE
           case ID_POS_Y:
           case ID_POS_Z:
           case ID_POS_E: {
             // вычитываем координату оси (strtof сама поймет знак минус, как в X:-29.0000)
             fval1 = strtof(prmValPtr, &prmValPtr);
-            updFloatValue(prmID, gTime, fval1);
-            if (prmID == ID_POS_E) {
+            updFloatValue(prmID, gTime, fval1);                     // выкладываем на публикацию
+            if (prmID == ID_POS_E) {                                // после экструдера ищем "Count " и шаги по осям 
               prmIDptr = prmValPtr;
               for (int i = 0; i < 4; i++) {
                 uint32_t idLen = pgm_read_dword(&gAnswer[ID_STEPS + i].idLen);
                 PGM_P id_ptr = (PGM_P)pgm_read_ptr(&gAnswer[ID_STEPS + i].idWord);
                 char* nextPtr = strstr_P((char*)prmIDptr, (const char*)id_ptr);
                 if (i == 0) {
-                  if (!(nextPtr)) break;                          // "Count " в строке не найдено
+                  if (!(nextPtr)) break;                            // "Count " в строке не найдено
                   prmIDptr = nextPtr + idLen; }
                  else {
                   if (!nextPtr) continue;
-                  lval1 = strtol(nextPtr + idLen, &nextPtr, 10);  // Вдруг порядок следования нарушен...
+                  lval1 = strtol(nextPtr + idLen, &nextPtr, 10);    // Порядок следования м.б. нарушен...
                   updIntValue((gAnswerID_t)(ID_STEPS + i), gTime, lval1);
-                  if (prmValPtr < nextPtr) prmValPtr = nextPtr;   // запоминаем наибольшее смещение
+                  if (prmValPtr < nextPtr) prmValPtr = nextPtr;     // поэтому запоминаем наибольшее смещение
               } } }
             break; } }
           case ID_SXYZ:
@@ -672,7 +663,7 @@ void getMarlin() {
             sdIsOK = (ok.skip == 0);
             if (cmdMode) cmdMode -= 1;                  // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
             // для SYS_PRE_UPLD и sdAutoScan лог не выводим, иначе - маркируем для лога, если это 1й маркер строки
-            if (logMark) logMark = ((bridgeState == SYS_PRE_UPLD) || (sdAutoScan))? '-': '<'; // '-' -> ID_ECHO
+            if (logMark) logMark = ((bridgeState == SYS_PRE_UPLD) || (sdAutoScan))? '-': '<'; // '-' для ID_ECHO
             sdAutoScan = 0;
             prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
             break;
@@ -690,17 +681,15 @@ void getMarlin() {
             sdFile.pageBegIdx = 0;                      // сбрасываем индекс начала страницы показа
             sdFile.maxIdx = 0;                          // сбрасываем размер списка файлов
             // маркируем для лога '!', если нет отладочного маркера, либо если это попытка автоскана маркируем для удаления из лога
-            if (logMark) logMark = (sdAutoScan)? '-': '!'; // '-' -> ID_ECHO
+            if (logMark) logMark = (sdAutoScan)? '-': '!'; // '-' для ID_ECHO
             break;
           case ID_SD_PROGRESS: {
             if (bridgeState != SYS_PRINT) {
               // если печать запущена вручную на принтере
               bool conflict = (bridgeState != SYS_IDLE);
-              // переключить в SYS_PRINT
-              ok.ack_status &= ~ACK_SELECTED;
-              prnFix(2, true);
-              if (conflict) {
-                // прерываем любую активность сообщением о конфликте
+              ok.ack_status &= ~ACK_SELECTED;           // фиксируем, что имя файла не определено
+              prnFix(2, true);                          // переключаем в SYS_PRINT
+              if (conflict) {                           // если конфликт - прерываем любую активность
                 errCode |= ERR_PRN_DETECTED; break; }
               }
             // 1. Вычитываем тек. значение. 
@@ -708,7 +697,7 @@ void getMarlin() {
             lval1 = strtol(prmValPtr, &prmValPtr, 10);        // Быстрый парсинг целого числа (long)
             // 2. Пропускаем любые пробелы после числа, двигая указатель вперед
             while (prmValPtr && isspace((unsigned char)*prmValPtr)) prmValPtr++;
-            // 3. Теперь prmValPtr смотрит ровно на слэш. Если он там есть — парсим второе число
+            // 3. Теперь prmValPtr должен указывать на слэш. Если он там есть — парсим второе число
             if (prmValPtr && *prmValPtr == '/')
               // prmValPtr + 1 перепрыгивает слэш. strtol сама пропустит пробелы после слэша, если они там будут
               lval2 = strtol(prmValPtr + 1, &prmValPtr, 10);  // Быстрый парсинг целого числа (long)
@@ -718,36 +707,35 @@ void getMarlin() {
             break; }
           case ID_NOTIFY: {
             // извлекаем имя файла из строки "//action:notification <f_name.gco>" (еще м.б. .gcode)
-            // prmValPtr указывает на начало строки (имени файла) после "//action:notification "
+            // prmValPtr указывает на начало имени файла после "//action:notification "
             // gAnswer_idx соответствует позиции сразу _за_ терминирующим '\0'
             size_t nLen = (&gAnswer_buf[gAnswer_idx - 1] - prmValPtr);
-            while (((bridgeState == SYS_IDLE) || (bridgeState == SYS_PRINT)) && (nLen > 5)) { // если строка длиннее мин.имени файла ("x.gco")
+            while (((bridgeState == SYS_IDLE) || (bridgeState == SYS_PRINT)) && (nLen > 5)) { // строка д.б. длиннее мин.имени файла ("x.gco")
               uint8_t *le_ptr = (uint8_t*)&gAnswer_buf[gAnswer_idx - 5];
               // делаем из строки число (LE) для быстрого сравнения
               uint32_t extStr = (le_ptr[0] | (le_ptr[1] << 8) | (le_ptr[2] << 16) | (le_ptr[3] << 24)) | 0x20202000 ; // "case insensitive"
               if ((extStr != 0x6F63672E) && ((extStr | 0x00000020) != 0x65646F63)) break;     // != "ocg." && != "edoc"
               ok.ack_status |= ACK_SELECTED;
               if (bridgeState != SYS_PRINT) {
-                if (srvSync) {
+                if (srvSync) {                          // завершаем стартовую синхронизацию, переключаемся в SYS_PRINT
                   srvSync= false; bridgeState = SYS_PRINT; }
                  else prnFix(5, true);
                 }
                else if (*socket.fName) break;
               if (nLen > MAX_FNAME_LEN) nLen = MAX_FNAME_LEN;
-              memcpy((uint8_t*)&socket.fName, (uint8_t*)prmValPtr, nLen);
+              memcpy((uint8_t*)&socket.fName, (uint8_t*)prmValPtr, nLen); // заполняем, если было пусто
               socket.clFileSel = false; socket.fName[nLen] = '\0';
               break;
               }
             prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
             break; }
-          case ID_BUSY: {
-            //srvSync = false; bridgeState = SYS_PRINT;
-            if (srvSync && !(busyMarkerTime)) uart_w((char*)PSTR("M27\n")); // прогресс
-            busyMarkerTime = gTime;
+          case ID_BUSY:
+            if (srvSync && !(busyMarkerTime)) uart_w((char*)PSTR("M27\n")); // при стартовой синхронизации запрашиваем прогресс
+            busyMarkerTime = gTime;                     // фиксируем время для отсчета ~2.5 сек (используется в mqttLoop())
             prmValPtr = &gAnswer_buf[gAnswer_idx - 1];  // смещаем указатель в конец строки - параметров больше не будет
-            break; }
+            break;
           default:
-            if (hasPrm == 1) hasPrm = 0;                // пока что в строке не находилось значений для известных параметров
+            if (hasPrm == 1) hasPrm = 0;                // страховка, удаляем итерацию из учёта количества известных параметров
             break;
           }
         if ((errCode != ERR_NO_ERRORS) || !(gAnswer_idx)) break;
@@ -756,12 +744,12 @@ void getMarlin() {
         } // if (prmID != ID_NONE)
       // Ищем ближайший пробел после прочитанных символов
       prmIDptr = strchr(prmValPtr, ' ');                // в конце строки будет присвоен NULL
-      } while (prmIDptr);
-    static strMem_t pathMem = {0, 0, 0};
+      } while (prmIDptr);                               // продолжаем парсинг параметров, если найден разделительный пробел
+    static strMem_t pathMem = {0, 0, 0};                // для хранения хэша строки текущего пути для подсчёта количества папок
     static int checkSize;
-    if (!(hasPrm) && (infoID == ID_NONE)) {             // в строке не нашлось служебной информации (logMark = '\0xff' или 0)
+    if (!(hasPrm) && (infoID == ID_NONE)) {             // в строке не нашлось служебной информации (в этом случае logMark ='\0xff' или =0)
       if (fListMode) {
-        // включен режим листинга содержимого SD - парсим строки, и если формат соответствует - помещаем в буфер, а также -
+        // включен режим листинга содержимого SD - парсим строки, и если формат соответствует файловой записи - помещаем в буфер, а также -
         // если нужно, ищем совпадения по имени/размеру, и при необходимости - выводим на экран
         fListTOut = WAIT_FLIST_TIMEOUT;                 // подкармливаем таймер
         bool canPut = ((gAnswer_idx + PACKET_BUF_SIZE) <= gBufSizeNow);
@@ -771,11 +759,11 @@ void getMarlin() {
          else canPut &= (parseFileInfo(&gAnswer_buf[anchorIdx]) == 0);              // пробуем заполнить структуру sdFile
         if (canPut) {
           // успех - заполняем буфер и попутно либо ищем совпадение с параметрами анонсируемого файла,
-          // либо передаем порядковый индекс и инфо о файле на экран клиентам с учетом ограничения количества позиций размером страницы
+          // либо передаем порядковый индекс и инфо о файле на экран клиентам с учетом заданного размера страницы
           sdFile.fIdx += 1;
-          sdFile.sizeCount += (!(strncasecmp_P(sdFile.fInfo + sdFile.pathLen, PSTR("PATHKEEP.GCO"), 12))? 0: 1);  // считаем файлы
+          sdFile.sizeCount += !!strncasecmp_P(sdFile.fInfo + sdFile.pathLen, PSTR("PATHKEEP.GCO"), 12);   // считаем непустые файлы
           if (confirmStr(&pathMem, ((sdFile.pathLen)? sdFile.fInfo: (char*)"\n"), sdFile.pathLen) < 0)
-            sdFile.keepCount += 1;                                                                                // считаем папки
+            sdFile.keepCount += 1;                                                                        // считаем папки
           if (sdFile.selName) {                 // был установлен флаг поиска совпадения с socket.fName ( + socket.fSize )
             if (sdFile.fIdx == 1) {
               // если задан поиск - в начале задаем режим учета размера и сбрасываем значение выбранного индекса
@@ -784,7 +772,7 @@ void getMarlin() {
             }
            else if ((sdFile.pageBegIdx) && (sdFile.fIdx >= sdFile.pageBegIdx) && (sdFile.fIdx < (sdFile.pageBegIdx + sdFile.pageSize)))
             fileInfo();                         // индекс в рамках страницы - передаем индекс и инфо о файле на экран клиентам
-          anchorIdx = gAnswer_idx;              // имя файла оставляем в буфере, смещаем якорь-указатель начала буфера приема
+          anchorIdx = gAnswer_idx;              // файловую запись оставляем в буфере, смещаем якорь-указатель начала буфера приема
           } // if (canPut)
          else                                   // если не файл-инфо либо некуда складывать
           if (logMark == '\xff') logMark = '<'; // маркируем для лога, если это 1й маркер строки
@@ -795,8 +783,8 @@ void getMarlin() {
         // это запрос M115 для получения габаритов
         if (logMark == '\xff') logMark = '<';   // маркируем для лога, если это 1й маркер строки
                                                 // если это - вывод после введенной команды типа M115, M122
-      gAnswer_idx = anchorIdx;                  // если неподдекживаемое сообщение - указатель приема в начало строки
-      continue;                                 // продолжить считывание потока от Marlin
+      gAnswer_idx = anchorIdx;                  // если неподдерживаемое сообщение - указатель приема в начало строки
+      continue;                                 // продолжаем считывание потока от Marlin
       }
     if (!ipKnown) showIP(gTime);                // периодически (30 сек) показываем IP до первого WS коннекта
     // отрабатываем информационные строки ответа
@@ -868,17 +856,18 @@ void getMarlin() {
         if (ok.skip) {
           ok.skip -= 1;
           if (ctrl & UART_ACK) logMark = 0;       // маркируем для лога "отладочным" маркером
-          if (ok.waiting) ok.wdTimer = ok.wdLoad;
+          if (ok.waiting) ok.wdTimer = ok.wdLoad; // "перезаряжаем" таймер, если надо
           if (ctrl & SERV_LOG) {
             len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:[%S]: OK skipped\n"),
                                               (const char*)pgm_read_ptr(&brStateName[bridgeState]));
             netQuePut_cid(packet, len, socket.clWS_ID); }
           break; }
         if (!ok.waiting) break;
+        // здесь получили подтверждение выполнения команды, определяем контекст и продолжаем соответственно
         drain = DRAIN_BREAK;
         ok.time = gTime - ok.time;
         ok.waiting = false; ok.wdTimer = 0;
-        if(useBFT && ackBFT && (seqBFT >= 0)) {
+        if (useBFT && ackBFT && (seqBFT >= 0)) {
           uint8_t seqOK = (uint8_t)(seqBFT & 0xFF) - 1;
           if (seqACK == (int32_t)((uint8_t)(seqOK - 1)))
             break;
@@ -944,7 +933,7 @@ void getMarlin() {
             break;
           case SYS_TRANSFER:
             // здесь только фиксация успешной передачи, OK от RESEND отрабатывается в doResend()
-            stat(MTR_OK_WAIT_TIME, ok.time);
+            STATISTICS(stat(MTR_OK_WAIT_TIME, ok.time));
             if (ctrl & SERV_LOG) {
               if (useBFT)
                 len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:BFT_BLOCK_OK after %u msec\n"), ok.time);
@@ -1021,8 +1010,7 @@ void getMarlin() {
               // если все запланированные удалены - переполняем счетчик итераций цикла
               sdFile.fIdx += (((sdFile.pageBegIdx & 0xFFFF) == (sdFile.pageBegIdx >> 16))? sdFile.maxIdx: 1);
               } // if (ok.setState == SYS_SD_ERASE) {
-             else {
-              if (!M30_Timer) break;                                          // далее только, если это удаление при ошибках загрузки
+             else if (M30_Timer) {                                            // далее только, если это удаление при ошибках загрузки
               bridgeState = SYS_IDLE; M30_Timer = 0;
               if (!deleted) {
                 if (tryAgain) {
@@ -1123,19 +1111,15 @@ void getMarlin() {
       case ID_PFT:
       case ID_PTF: {
         char* t_ptr = NULL;
-        // gDataPtr уже указывает на текст СРАЗУ после "PFT:"
-        if (strstr(gDataPtr, "success")) {
-          errCode &= ~ERR_PFT_BUSY;             // Сбрасываем флаг занятости, если был
-        if (logMark == '\xff') logMark = '<'; } // маркируем, если это 1й маркер строки
-         else if (strstr(gDataPtr, "busy")) {
-          errCode |= ERR_PFT_BUSY;              // по таймеру отправка QUERY каждые 500мс
-          if (logMark) logMark = '!';           // если еще нет отладочного маркера, маркируем '!'
-          t_ptr = (char*)PSTR("busy"); }
-         else if (strstr(gDataPtr, "fail") || strstr(gDataPtr, "ioerror")) {
-          errCode |= ERR_UPLOAD_ERR;            // Жесткая ошибка
-          if (logMark) logMark = '!';           // если еще нет отладочного маркера, маркируем '!'
-          t_ptr = (char*)PSTR("fail"); }
-        if ((ctrl & SERV_LOG) && t_ptr) {
+        // gDataPtr указывает на текст СРАЗУ после "PFT:"
+        if (*gDataPtr == 's') {                   // "success"
+          errCode &= ~ERR_PFT_BUSY;               // Сбрасываем флаг занятости, если был
+          if (logMark == '\xff') logMark = '<'; } // маркируем, если это 1й маркер строки
+         else {                                   // "busy", "fail", "ioerror"
+          errCode |= ERR_UPLOAD_ERR;              // Жесткая ошибка, прерываем начало загрузки
+          if (logMark) logMark = '!';             // если еще нет отладочного маркера, маркируем '!'
+          t_ptr = gDataPtr; }
+        if ((ctrl & SERV_LOG) && t_ptr) {         // отладка для такой ситуации
           const char* m_ptr = (const char*)pgm_read_ptr(&brStateName[bridgeState]);
           len = snprintf_P((char*)packet, NET_DATA_MAX,
                                   PSTR("L:PFT:%S [n%d * %S * rs%u]\n"),
@@ -1143,7 +1127,7 @@ void getMarlin() {
           netQuePut_cid(packet, len, socket.clWS_ID); }
         break; }
       case ID_ERROR: {
-        if (logMark) logMark = '!';             // если еще нет отладочного маркера, маркируем '!'
+        if (logMark) logMark = '!';               // если еще нет отладочного маркера, маркируем '!'
         break; }
       case ID_WAIT: {
         if (((bridgeState != SYS_TRANSFER) && (bridgeState != SYS_PRINT)) || (ctrl & FULL_STAT))
@@ -1170,7 +1154,7 @@ void getMarlin() {
         sdFile.fIdx = 0; sdFile.maxIdx = 0;
         sdFile.selNum = 0;              // для подсчета количества файлов с заданным именем поиска
         if (ok.doLog) {
-          // это вывод после wsMessage
+          // это вывод после ID_GCODE в wsMessage()
           sdFile.pageBegIdx = 1;        // сбрасываем отображение в начало, если это вывод после wsMessage
           sdFile.selName = false;       // сбрасываем флаг выбора по совпадению с socket.fName & socket.fSize
           sdFile.selIdx = 0;            // сбрасываем текущий выбор / индекс для выбора при полном листинге
@@ -1179,6 +1163,7 @@ void getMarlin() {
       case ID_SD_END:
         fListMode = false; sdIsOK = true; fListWait = false; fListTOut = 0; sdAutoScan = 0;
         sdChecked = true;               // разрешаем heartbeat
+        txTimer = 2;                    // задаём задержку выдачи для следующей посылки через UART TX
         if (cmdMode) cmdMode -= 1;      // восстановление опроса параметров, если был запрет (ввод M28, листинг файлов)
         if (bridgeState == SYS_PRE_UPLD) break;
         sdFile.maxIdx = sdFile.fIdx;
@@ -1267,7 +1252,7 @@ void getMarlin() {
       default:
         break;
       } // switch (infoID)
-    gAnswer_idx = anchorIdx;                // сбрасываем текущую позицию записи на якорную
+    gAnswer_idx = anchorIdx;                // возвращаем текущую позицию записи на якорную (в начало строки)
     } // while (uart_r_avail() && ((errCode & ~(ERR_PFT_BUSY)) == ERR_NO_ERRORS))
   if (logMark != '\xff') logMsg(logMark);  // если (logMark != '\xff'), значит есть строка в лог
   if (ctrl & UART_COUNT)
@@ -1275,4 +1260,4 @@ void getMarlin() {
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:RX= %d line(s), %d sym(s)\n"), uartEOL, uartSymAll);
       netQuePut_cid(packet, len, socket.clWS_ID); // Трансляция лога в браузер ### debug
       }
-} // answer()
+} // getMarlin()

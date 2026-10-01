@@ -15,7 +15,6 @@
 #pragma once
 
 uint32_t parseRC;
-//int32_t callMark = -1;
 
 #define IS_PROGMEM(ptr) ((uint32_t)(ptr) >= 0x40000000)
 
@@ -25,6 +24,10 @@ uint32_t parseRC;
     __typeof__(code) result = (code); \
     ctrl = ctrlMem;                   \
     result;                           \
+})
+
+#define STATISTICS(code)          ({  \
+    if (ctrl & FULL_STAT) (code);     \
 })
 
 #define PACKET_BUF_SIZE 256
@@ -54,12 +57,14 @@ uint32_t parseRC;
 
 #define MAX_FNAME_LEN 112     // максимальная длина имени файла
 
-#define WS_ALL       0xF      // для осуществления broadcast
-#define WS_URGENT (~WS_ALL)   // используется в качестве признака "срочности"
-#define WS_NOONE     16       // соответствует отсутствию подключений, либо безадресный
+#define WS_ALL       0xFF     // для осуществления broadcast
+#define WS_URGENT   0xFF00    // используется в качестве признака "срочности"
+#define WS_NOONE WEBSOCKETS_SERVER_CLIENT_MAX // соответствует отсутствию подключений, либо безадресный
 #define SID_NOONE     0       // активист отстутствует, регистрация разрешена
 #define SID_SYSTEM  0x10000   // для временной блокировки регистрации активиста
 #define MAP_NOONE     0       // карта пуста, отправлять некому
+#define WS_UNICAST    0       // одноадресная рассылка лога
+#define WS_BROADCAST WS_ALL   // широковещательная рассылка лога
 
 /*=== типы WS сообщений ===*/
 /*  typedef enum {  // from library WebSockets
@@ -94,7 +99,6 @@ const char ws_bad[]   PROGMEM = "WStype illegal";
 static const char* wsTypeName[] PROGMEM __attribute__((aligned(4))) = {
   ws_error, ws_discn, ws_conn,  ws_text,  ws_bin,   ws_fgtxt,
   ws_fgbin, ws_fg,    ws_fgfin, ws_ping,  ws_pong,  ws_bad };
-/*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 /*=== сетевой режим системы ===*/
 enum brWiFiState_t {
@@ -230,38 +234,38 @@ struct Config {
 #define ERR_MEMORY_ERR    0x80000000
 
 // сообщения об ошибках
-const char disconnect_msg[]   PROGMEM = "L:!-Client %d disconnected\n"; // 1
-const char upload_error_msg[] PROGMEM = "L:!-Transfer data loss.\n";    // 2
-const char m30_ok_tout_msg[]  PROGMEM = "L:!-M30 OK timeout.\n";        // 4
-const char ganswer_ovf_msg[]  PROGMEM = "L:!-G_ANSWER overflow.\n";     // 8
-const char act_tout_msg[]     PROGMEM = "L:!-Marlin freeze.\n";         // 16
-const char ack_offrun_msg[]   PROGMEM = "L:!-BFT_ACK offrun.\n";        // 32
-const char nak_offrun_msg[]   PROGMEM = "L:!-BFT_NAK offrun.\n";        // 64
-const char uart_rx_ovf_msg[]  PROGMEM = "L:!-UART Rx overflow\n";       // 128
-const char m28_ok_tout_msg[]  PROGMEM = "L:!-M28 OK timeout.\n";        // 256
-const char data_ok_tout_msg[] PROGMEM = "L:!-Data OK timeout.\n";       // 512
-const char m29_ok_tout_msg[]  PROGMEM = "L:!-M29 OK timeout.\n";        // 1024
-const char bin_tout_msg[]     PROGMEM = "L:!-WS BIN timeout.\n";        // 2048
-const char data_too_big_msg[] PROGMEM = "L:!-G-code too long.\n";       // 4096
-const char bad_progress_msg[] PROGMEM = "L:!-EOF out of progress.\n";   // 8192
-const char data_resend_msg[]  PROGMEM = "L:!-Resend error.\n";          // 16384
-//const char resend_fix_msg[]   PROGMEM = "L:!Resend fixed.\n";           // 32768
-const char net_busy_msg[]     PROGMEM = "L:!-Net is busy.\n";           // 65536
-const char net_que_msg[]      PROGMEM = "L:!-Net send bad header.\n";   // 65536
-const char net_que1_msg[]     PROGMEM = "L:!-Net send queue crash.\n";  // 65536
-const char net_que2_msg[]     PROGMEM = "L:!-Net clean queue crash.\n"; // 65536
-const char net_freeze_msg[]   PROGMEM = "L:!-Net freeze.\n";            // 65536
-const char bad_ch_num_msg[]   PROGMEM = "L:!-Chunk num error.\n";       // 65536
-const char no_sd_card_msg[]   PROGMEM = "L:!-No SD card.\n";            // 65536
-const char flist_tout_msg[]   PROGMEM = "L:!-SD fList timeout.\n";        // 
-const char file_open_err[]    PROGMEM = "L:!-Can't open file.\n";        // 
-const char ota_bad_init_msg[] PROGMEM = "L:!-OTA init error.\n";        // 65536
-const char ota_flsh_err_msg[] PROGMEM = "L:!-OTA flash error.\n";       // 65536
-const char ota_bad_fin_msg[]  PROGMEM = "L:!-OTA finalize error.\n";    // 65536
-const char mqtt_bad_cfg_msg[] PROGMEM = "L:!-MQTT config error.\n";     // 65536
-const char prn_detected_msg[] PROGMEM = "L:!-Print process detected.\n"; // 65536
-const char m23_ok_tout_msg[]  PROGMEM = "L:!-M23 OK timeout.\n";        // 
-const char memory_err_msg[]   PROGMEM = "L:!-Memory corrupted.\n";        // 
+const char disconnect_msg[]   PROGMEM = "L:!-Client %d disconnected\n";
+const char upload_error_msg[] PROGMEM = "L:!-Transfer data loss.\n";
+const char m30_ok_tout_msg[]  PROGMEM = "L:!-M30 OK timeout.\n";
+const char ganswer_ovf_msg[]  PROGMEM = "L:!-G_ANSWER overflow.\n";
+const char act_tout_msg[]     PROGMEM = "L:!-Marlin freeze.\n";
+const char ack_offrun_msg[]   PROGMEM = "L:!-BFT_ACK offrun.\n";
+const char nak_offrun_msg[]   PROGMEM = "L:!-BFT_NAK offrun.\n";
+const char uart_rx_ovf_msg[]  PROGMEM = "L:!-UART Rx overflow\n";
+const char m28_ok_tout_msg[]  PROGMEM = "L:!-M28 OK timeout.\n";
+const char data_ok_tout_msg[] PROGMEM = "L:!-Data OK timeout.\n";
+const char m29_ok_tout_msg[]  PROGMEM = "L:!-M29 OK timeout.\n";
+const char bin_tout_msg[]     PROGMEM = "L:!-WS BIN timeout.\n";
+const char data_too_big_msg[] PROGMEM = "L:!-G-code too long.\n";
+const char bad_progress_msg[] PROGMEM = "L:!-EOF out of progress.\n";
+const char data_resend_msg[]  PROGMEM = "L:!-Resend error.\n";
+//const char resend_fix_msg[]   PROGMEM = "L:!Resend fixed.\n";
+const char net_busy_msg[]     PROGMEM = "L:!-Net is busy.\n";
+const char net_que_msg[]      PROGMEM = "L:!-Net send bad header.\n";
+const char net_que1_msg[]     PROGMEM = "L:!-Net send queue crash.\n";
+const char net_que2_msg[]     PROGMEM = "L:!-Net clean queue crash.\n";
+const char net_freeze_msg[]   PROGMEM = "L:!-Net freeze.\n";
+const char bad_ch_num_msg[]   PROGMEM = "L:!-Chunk num error.\n";
+const char no_sd_card_msg[]   PROGMEM = "L:!-No SD card.\n";
+const char flist_tout_msg[]   PROGMEM = "L:!-SD fList timeout.\n";
+const char file_open_err[]    PROGMEM = "L:!-Can't open file.\n";
+const char ota_bad_init_msg[] PROGMEM = "L:!-OTA init error.\n";
+const char ota_flsh_err_msg[] PROGMEM = "L:!-OTA flash error.\n";
+const char ota_bad_fin_msg[]  PROGMEM = "L:!-OTA finalize error.\n";
+const char mqtt_bad_cfg_msg[] PROGMEM = "L:!-MQTT config error.\n";
+const char prn_detected_msg[] PROGMEM = "L:!-Print process detected.\n";
+const char m23_ok_tout_msg[]  PROGMEM = "L:!-M23 OK timeout.\n";
+const char memory_err_msg[]   PROGMEM = "L:!-Memory corrupted.\n";
 
 static const char* msgArray[32] PROGMEM __attribute__((aligned(4))) = {
   disconnect_msg,   upload_error_msg, m30_ok_tout_msg,  ganswer_ovf_msg,
@@ -302,8 +306,8 @@ const char bmT[]     PROGMEM __attribute__((aligned(4))) = "T";   // MSG_GCODE
 const char bmEmpty[] PROGMEM __attribute__((aligned(4))) = "";
 
 static const BridgeMsg_t bridgeMsg[] PROGMEM __attribute__((aligned(4))) = {
-  {bmFile, 2, 5}, {bmStart, 2, 1},  {bmEnd, 2, 9},  {bmPrint, 2, 5}, 
-  {bmTime, 2, 10},   {bmL, 2, 5},    {bmG, 1, 4},   {bmM, 1, 4},    {bmT, 1, 2},
+  {bmFile, 2, 5},   {bmStart, 2, 1},  {bmEnd, 2, 9},  {bmPrint, 2, 5}, 
+  {bmTime, 2, 10},  {bmL, 2, 5},  {bmG, 1, 4},  {bmM, 1, 4},  {bmT, 1, 2},
   {bmEmpty, 0, 0}};
 /*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
@@ -319,21 +323,16 @@ static const BridgeMsg_t bridgeMsg[] PROGMEM __attribute__((aligned(4))) = {
 #define ACK_QRY_SIZE  0x1000
 
 struct oK_t {
-  int wdTimer, wdLoad, skip;
-  uint32_t ack_status;
-  uint32_t time;  // для статистики MTR_OK_WAIT_TIME (время (мсек) ожидания подтверждения от Марлин)
-  bool doLog;
-  bool waiting;
-  BridgeState_t setState;
+  int wdTimer, wdLoad;    // для установки параметров watchdog при ожидании "ОК"
+  int skip;               // определяет количество пропусков промежуточных "ОК" для многострочных команд
+  uint32_t ack_status;    // для "сбора" битовых флагов по ответам Марлин
+  uint32_t time;          // для статистики MTR_OK_WAIT_TIME (время (мсек) ожидания подтверждения от Марлин)
+  bool doLog;             // признак необходимости вывода полного текста ответа Марлин после "ручной" команды
+  bool waiting;   // флаг, при наличии которого конечный ответ "ОК" инициирует анализ результата выполнения команды
+  BridgeState_t setState; // используется для хранения целевого либо "опорного" значения bridgeState
 };
 oK_t ok = {0, 0, 0, 0, 0, false, false, SYS_IDLE};
-/*^^^^^^^^^^^^^^^^^^^
-struct answerStat_t {
-  uint32_t time;  // для статистики MTR  _OK_WAIT_LOOPS (число циклов loop() ожидания подтверждения от Марлин)
-  bool got;
-};
-answerStat_t answer = {0, false};
-^^^^^^^^^^^^^^^^^^^^^^^^*/
+
 uint32_t getMarlinRXTime = 0; // для статистики MTR_RX_LOOP_TIME
 
 /*=== флаги и переменные для режима SYS_TRANSFER ===*/
@@ -388,7 +387,7 @@ fData_t fData = {0, 0, 0, 0, 0, 0, 0, CS_COUNT, 0, false, 0};
 #define ANN_ID_GCODE_BUSY 0x1000
 
 enum annEvent_t {
-  ANN_FILE_ILLEGAL = 0, ANN_FNAME_ILLEGAL,  ANN_FILE_EMPTY,     ANN_ROLE_TIMEOUT,
+  ANN_FILE_ILLEGAL = 0, ANN_FNAME_ILLEGAL,  ANN_ROLE_TIMEOUT,
   ANN_ROLE_APPROVED,    ANN_ROLE_TERMINATED,   ANN_START_ILLEGAL,  ANN_END_ILLEGAL,
   ANN_PRNREQ_ILLEGAL,   ANN_NO_PRN_NAME,    ANN_BAD_PRN_NAME,   ANN_BAD_PRN_SIZE,
   ANN_SCREAM_ILLEGAL,   ANN_OK_ILLEGAL,     ANN_GCODE_ILLEGAL,  ANN_GCODE_BUSY,
@@ -399,13 +398,18 @@ enum annEvent_t {
   // * - ширина берется из аргумента width
   // lX - long 16-ричный в верхнем регистре
   //int printed = snprintf_P((char*)dst, 12, PSTR("0x%0*lX"), width, *number);
+  // формат печати %04lX означает:
+  // 0 - дополнять нулями
+  // * - ширина == 4
+  // lX - long 16-ричный в верхнем регистре
+  //int printed = snprintf_P((char*)dst, 12, PSTR("0x%04lX"), *number);
 const char ann_file_bad[]   PROGMEM = "L:![%S]Illegal FILE access request\n";
 const char ann_fname_bad[]  PROGMEM = "L:![%S]Offered fName is empty or too long\n";
-const char ann_file_empty[] PROGMEM = "L:![%S]Offered file is empty\n";
-const char ann_role_tout[]  PROGMEM = "L:![%S]Concurrent announce ignored\n";
 
+const char ann_role_tout[]  PROGMEM = "L:![%S]Concurrent announce ignored\n";
 const char ann_role_apv[]   PROGMEM = "L:,Assigned role %d\n";
 const char ann_role_trm[]   PROGMEM = "L:,Terminated role %d\n";
+
 const char ann_start_bad[]  PROGMEM = "L:![%S]Illegal START request. ID 0x%04lX\n";
 const char ann_end_bad[]    PROGMEM = "L:![%S]Illegal END upload request. ID 0x%04lX\n";
 
@@ -424,9 +428,9 @@ const char ann_msg_bad[]    PROGMEM = "L:![%S]Illegal WS message. ID 0x%04lX\n";
 const char ann_bin_bad[]    PROGMEM = "L:![%S]Illegal BIN message. ID 0x%04lX\n";
 
 const char* const ann[] PROGMEM __attribute__((aligned(4))) = {
-  ann_file_bad,   ann_fname_bad,  ann_file_empty, ann_role_tout,
-  ann_role_apv,   ann_role_trm,   ann_start_bad,  ann_end_bad,
+  ann_file_bad,   ann_fname_bad,
+  ann_role_tout,  ann_role_apv,   ann_role_trm,
+  ann_start_bad,  ann_end_bad,
   ann_prnreq_bad, ann_prn_noname, ann_prn_x_name, ann_prn_x_size,
   ann_scream_bad, ann_ok_bad,     ann_gcode_bad,  ann_gcode_busy,
   ann_parse_err,  ann_msg_bad,    ann_bin_bad };
-/*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/

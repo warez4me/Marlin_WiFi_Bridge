@@ -238,8 +238,8 @@ const char state_ready[]  PROGMEM =  "READY";
 const char state_print[]  PROGMEM =  "PRINT";
 const char state_error[]  PROGMEM =  "ERROR";
 const char state_wait[]   PROGMEM =  "WAIT";
-const char state_ota_mode[] PROGMEM =  "OTA MODE";
-const char state_ota_up[]   PROGMEM =  "OTA UPDATE";
+const char state_ota_mode[] PROGMEM = "OTA MODE";
+const char state_ota_up[]   PROGMEM = "OTA UPDATE";
 const char state_unknown[] PROGMEM = "UNKNOWN";
 // Таблица указателей на имена публикуемых состояний системы
 const char* const pubState_id[] PROGMEM __attribute__((aligned(4))) = {

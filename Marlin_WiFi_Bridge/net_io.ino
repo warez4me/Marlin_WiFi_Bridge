@@ -70,20 +70,20 @@ bool netQueFlush(uint32_t flushSize, bool countOnly) {
 bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg, uint8_t c) {
   if (wsMap == MAP_NOONE) {
     netBufBeg = netBufEnd; return true; } // сбрасываем очередь, если клиентов не осталось
-  //if (c == WS_NOONE) return true;         // если безадресный пакет
-  if (dBroadcast) c = WS_ALL;
-   else if ((c != WS_ALL) && !(wsMap & (1 << c))) return true;  // если вдруг адресат отключился
+  c |= dBroadcast;
+  if ((c != WS_ALL) && !(wsMap & (1 << c))) return true;  // если вдруг адресат отключился
   uint32_t mSize = ((msg)? ((msgSize >= 0)? msgSize: -msgSize): 0);
   uint32_t preSize = 0;
   if (preMsg && *preMsg) preSize = IS_PROGMEM(preMsg) ? strlen_P(preMsg) : strlen(preMsg);
-  if ((preSize + mSize) == 0) return true;
-  if ((preSize + mSize) > NET_DATA_MAX) return false;
-  uint32_t putSize = sizeof(netData_t) + T_STR_SIZE + preSize + mSize;
+  uint32_t combined = preSize + mSize;
+  if (combined == 0) return true;
+  if (combined > NET_DATA_MAX) return false;
+  uint32_t putSize = sizeof(netData_t) + T_STR_SIZE + combined;
   // 1. Пытаемся освободить место, если буфер забит
   if (!netQueFlush(putSize, ((msg >= netSendBuf) && (msg < (netSendBuf + SEND_BUF_SIZE))))) return false;
   netData_t header;
   header.time = millis();
-  header.size = T_STR_SIZE + preSize + mSize;
+  header.size = T_STR_SIZE + combined;
   header.cMap = ((c == WS_ALL)? WS_ALL: (1 << c));
   header.cMap |= ((msgSize >= 0)? 0: WS_URGENT);                // помечаем срочный пакет
   // в начале каждого сообщения будет метка времени
@@ -99,7 +99,7 @@ bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg, uint8_t c) {
         // Печатаем микросекунды в тот же буфер сразу после строки времени
     snprintf_P(tBuf + t_size, sizeof(tBuf) - t_size, PSTR(".%06lu"), tv.tv_usec);
     }
-   else // Резервный Uptime до синхронизации, ровно 12 символов текста
+   else // резервный Uptime до синхронизации, ровно 12 символов текста
     snprintf_P(tBuf, T_STR_SIZE, PSTR("%-12lu"), header.time);
   // === КОНЕЦ БЛОКА РЕАЛЬНОГО ВРЕМЕНИ NTP ===
   tBuf[T_STR_SIZE - 1] = ':'; // ставим разделитель, ограничиваем 3-мя символами миллисекунд
@@ -132,13 +132,13 @@ void netQueSend() {
   uint32_t yieldCounter = 0;                              // Счетчик пакетов для вызова yield()
   bool statOk = false;
   while (queSize > 0) {
-    if (!statOk) {
-      stat(MTR_NET_BUF_SIZE, queSize); statOk = true; }   // статистика в начале цикла выгрузки
+    if (!statOk) {                                        // статистика размера очереди в начале цикла выгрузки
+      STATISTICS(stat(MTR_NET_BUF_SIZE, queSize));
+      statOk = true; }
     if (queSize < (int32_t)(sizeof(netData_t))) {
       // ошибка, значения индексов не соответствуют объему данных
       netBufEnd = netBufBeg; errCode |= ERR_NET_QUE_ERR;  // Сбрасываем всё, чтобы не уйти в бесконечный цикл
-      return;
-      }
+      return; }
     netData_t header;
     uint8_t* h_ptr = (uint8_t*)&header;
     // Побайтовое извлечение заголовка (безопасно от Alignment Exception)
@@ -148,47 +148,49 @@ void netQueSend() {
     if (queSize < (int32_t)(sizeof(netData_t) + header.size)) {
       // (маловероятно , но..) буфер "испортился" - сбрасываем
       netBufEnd = netBufBeg; errCode |= ERR_NET_QUE1_ERR;
-      return;
-      }
-    if (((header.cMap & WS_ALL) == MAP_NOONE) || (header.size > sizeof(netSendBuf))) {
-      //нет подключенных клиентов или нет адресата или превышение размера - пропускаем сообщение, очищаем очередь
+      return; }
+    uint16_t sendMap = (header.cMap & WS_ALL);
+    if ((sendMap == MAP_NOONE) || (header.size > sizeof(netSendBuf))) {
+      //нет подключенных клиентов или нет адресата или сообщение превышает допустимый размер - пропускаем сообщение, очищаем очередь
       getIdx += header.size; netBufBeg = getIdx; queSize -= (sizeof(netData_t) + header.size);
-      continue;
-      }
+      continue; }
     getIdx = ringBufferGet(getIdx, netSendBuf, header.size);  // копируем строку времени и сообщение во вр.буфер
     uint32_t goneTime = millis() - header.time;
-    int active = ((socket.clGroup_ID & 0xFFFF)? 2: 0);
-    uint8_t sendMap = header.cMap, i = ((active)? socket.clWS_ID: 0); // при наличии активиста начинаем с него
-    while ((i < WEBSOCKETS_SERVER_CLIENT_MAX) && ((sendMap & WS_ALL) != MAP_NOONE)) {
-      if (sendMap & (1 << i)) {               // Если бит клиента установлен в общей карте и в карте передачи
-        sendMap &= ~(1 << i);                 // каждый установленный бит в карте отрабатывается только раз за цикл
-        // ПОДКАЧКА WDT И СТЕКА: Точка максимальной сетевой нагрузки
-        // Сбрасывает таймеры и дает LwIP протолкнуть буферы прямо во время итерации
-        // вызываем yield() раз в 4 пакета
-        if (++yieldCounter >= 4) {
-          ESP.wdtFeed(); yield(); 
-          yieldCounter = 0;
+    int active = ((!!(socket.clGroup_ID & 0xFFFF)) << 1);     // ((socket.clGroup_ID & 0xFFFF)? 2: 0);
+    uint8_t i = ((active)? socket.clWS_ID: 0);  // при наличии активиста начинаем с него
+    while ((i < WEBSOCKETS_SERVER_CLIENT_MAX) && (sendMap != MAP_NOONE)) {
+      if (sendMap & (1 << i)) {                 // Если бит клиента установлен в общей карте и в карте передачи заголовка
+        sendMap &= ~(1 << i);                   // каждый установленный бит в карте отрабатывается только раз за цикл
+        // ПОДКАЧКА WDT И СЕТЕВОГО СТЕКА: Точка максимальной сетевой нагрузки
+        // Периодически нужно сбрасывать таймеры и давать LwIP протолкнуть буферы прямо во время итерации
+        if (!(++yieldCounter &= 3)) {
+          ESP.wdtFeed(); yield();               // вызываем yield() раз в 4 пакета
+          //yieldCounter = 0;
           // Защита: проверяем, не сбежали ли клиенты за время yield()
-          if (wsMap == MAP_NOONE) {
-            netBufBeg = netBufEnd; return; }
-          }
-        uint32_t wsSendT = millis();
-        bool wsRC = webSocket.sendBIN(i, netSendBuf, header.size);
-        stat(MTR_WS_LOOP_TIME, (millis() - wsSendT));
-        //if (webSocket.sendBIN(i, netSendBuf, header.size)) { // если сообщение было успешно отправлено по адресу (i)
+          /*if (wsMap == MAP_NOONE) { // удалено, т.к. карта не может измениться вне этой процедуры
+            netBufBeg = netBufEnd; return; }*/ }
+        uint32_t wsSendT;
+        bool wsRC;
+        if (ctrl & FULL_STAT) {
+          wsSendT = millis();
+          wsRC = webSocket.sendBIN(i, netSendBuf, header.size);
+          stat(MTR_WS_LOOP_TIME, (millis() - wsSendT)); }
+         else
+          wsRC = webSocket.sendBIN(i, netSendBuf, header.size);
         if (wsRC) { // если сообщение было успешно отправлено по адресу (i)
-          header.cMap &= ~(1 << i);           // убираем адрес из карты передачи
+          header.cMap &= ~(1 << i);             // убираем адрес из карты передачи
           if (active == 2) {
             // сюда можем попасть только в начале цикла, когда i == socket.clWS_ID
-            (header.cMap & WS_URGENT)? stat(MTR_UCAST_GONE, goneTime): stat(MTR_BCAST_GONE, goneTime);
-            active -= 1; }
+            if (ctrl & FULL_STAT)
+              (header.cMap & WS_URGENT)? stat(MTR_UCAST_GONE, goneTime): stat(MTR_BCAST_GONE, goneTime);
+            active = 1; }
            else if (active == 0) {
             // сюда попадаем после первой удачной отправки, когда нет активиста
-            stat(MTR_BCAST_GONE, goneTime); active = -1; }
+            STATISTICS(stat(MTR_BCAST_GONE, goneTime)); active = -1; }
         } }
       if (active > 0) { // активиста отработали в первую очередь: =1 после усп.отправки, =2 если отправки не было
         active -= 2; i = ((i)? 0xFF: 0); } // продолжаем цикл через (0xFF -> 0), если активист был ненулевой
-      i += 1;
+      i += 1;           // uint8_t !!
       } // while
     if (header.cMap & WS_ALL) {
       // еще не всем клиентам передано
@@ -203,15 +205,15 @@ void netQueSend() {
       // это обычное сообщение :
       // < 20 мсек для всех и < 100 мсек для активиста - возврат до сл. loop()
       // > 100 мсек - сбрасываем с подсчетом, проходим дальше к следующему сообщению
-      if ((goneTime < 20) || ((goneTime < 100) && (socket.clGroup_ID & 0xFFFF) && (header.cMap & (1 << socket.clWS_ID))))
-        return;
-      if ((socket.clGroup_ID & 0xFFFF) && (header.cMap & (1 << socket.clWS_ID)))
-        netDrops += 1;
+      bool forActive = ((socket.clGroup_ID & 0xFFFF) && (header.cMap & (1 << socket.clWS_ID)));
+      if ((goneTime < 20) || ((goneTime < 100) && forActive)) return;
+      if (forActive) netDrops += 1;
       } // if (header.cMap & WS_ALL)
     netBufBeg = getIdx; queSize -= (sizeof(netData_t) + header.size);
     } // while (queSize > 0)
 }
 
+/*
 void netQueClean() {
   if (wsMap == MAP_NOONE) netBufBeg = netBufEnd;              // сбрасываем очередь, если клиентов не осталось
   if (netBufBeg == netBufEnd) return;
@@ -237,3 +239,4 @@ void netQueClean() {
     queIdx += header.size;
     } // while (cleanSize > 0) {
 }
+*/

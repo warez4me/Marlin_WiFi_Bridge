@@ -40,14 +40,10 @@ inline uint32_t ringBufferPut(uint32_t, const uint8_t*, uint32_t);
 inline uint32_t ringBufferGet(uint32_t, uint8_t*, uint32_t);
 bool netQueFlush(uint32_t, bool);
 bool netQuePut(uint8_t* msg, int32_t msgSize, char* preMsg = NULL, uint8_t cid = WS_ALL);
-inline bool netQuePut_pre(uint8_t* msg, int32_t msgSize, char* preMsg) {
-  return netQuePut(msg, msgSize, preMsg);
-}
 inline bool netQuePut_cid(uint8_t* msg, int32_t msgSize, uint8_t cid) {
   return netQuePut(msg, msgSize, NULL, cid);
 }
 void netQueSend();
-void netQueClean();
 
 /*--------------------------*/
 /*------- service.ino ------*/
@@ -120,7 +116,7 @@ char* fl2chr(const char*);
 void wifiConnect(bool init=false);
 void initWPath(char*, uint8_t);
 inline void init_chunks();
-void br_announce(annEvent_t, uint8_t, uint8_t, uint32_t announceID = 0);
+void br_announce(annEvent_t, uint8_t, uint32_t announceID = 0);
 WSMessage_t wsMsgID(char*, size_t, uint32_t*);
 void webSocketEvent(uint8_t, WStype_t, uint8_t*, size_t);
 inline uint32_t csFletchers16(uint32_t, uint8_t);

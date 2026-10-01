@@ -40,6 +40,7 @@ An ultra-optimized, high-performance software-hardware stack that transforms an 
 * [📂 File Management & Transfer Modes](#file-management)
   * [Transfer Pipelines](#transfer-pipelines)
   * [Selection & Navigation Mechanics](#selection-mechanics)
+  * [🐛 Known Bugs & Limitations (Marlin Quirks)](#known-bugs)
   * [💾 Printer SD Card Preparation & Limitations](#sd-limits)
 * [🔌 Hardware Selection & Requirements](#hardware-selection)
   * [Recommended Boards & Modules](#recommended-boards)
@@ -163,6 +164,16 @@ The bridge offers two ways to select files for printing and two distinct UART tr
 - **Printer SD Terminal Listing (Method 2) :** Files on the printer's SD are fetched using an 8 KB static buffer supporting names up to 112 characters. The list is outputted using a scannable, adjustable paginated viewport (`PgUp`/`PgDown`). To select a file from this listing for printing, the user can explicitly input its index wrapped in parentheses (using the system's [standard command format](#file-command)).
 
 - **Safe Operations :** Destructive processes use an atomic, two-pass deletion algorithm with initial status flag marking. Directories that are completely empty are injected with a placeholder file to prevent Marlin from dropping directory trees out of index listings.
+
+<a id="known-bugs"></a>
+
+### 🐛 Known Bugs & Limitations (Marlin Quirks)
+
+Due to the lightweight nature of Marlin's internal file system layer and occasional serial port buffering race conditions, you may encounter rare, non-critical glitches during file operations:
+
+* **File Write-Open / Delete Failures:** In very rare instances, Marlin may lock a file handle or ignore a command sequence, refusing to open a new file for writing or delete an existing one. 
+  * 🔄 **Workaround:** If an operation fails or the terminal reports an error, **simply retry the exact same action**. A second consecutive attempt almost always forces Marlin to release the lock and complete the task successfully.
+* **Corrupted Upload Leftovers:** If a file upload is abruptly aborted or fails due to heavy EMI, the system will attempt to clean up the workspace. If this subsequent deletion fails, you in 99.9% of cases will get an explicit report about the deletion error in the log. If you see such a notification, or optionally want to be double-sure, you can check SD contents and use the deletion commands to clean up any partial file fragments.
 
 <a id="sd-limits"></a>
 

@@ -514,8 +514,7 @@ bool myBridgeCmd(char* msg, size_t length) {
     case ID_DCLIENT: {
       if (hasNum) {
         if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG;
-        dBroadcast = (numVal > 20);
-        }
+        dBroadcast = (numVal > 20)? WS_BROADCAST: WS_UNICAST; }
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:,Client log now %d (%S).\n"),
                                       !!(ctrl & CLIENT_LOG), STATUS_ON_OFF((ctrl & CLIENT_LOG)));
       netQuePut_cid(packet, len, socket.clWS_ID);
@@ -580,7 +579,7 @@ bool myBridgeCmd(char* msg, size_t length) {
     case ID_DALL: {
       if (hasNum) {
         ctrl &= ~MQTT_LOG; ctrl &= ~UART_LOG;
-        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG; dBroadcast = (numVal > 20);
+        if (numVal) ctrl |= CLIENT_LOG; else ctrl &= ~CLIENT_LOG; dBroadcast = (numVal > 20)? WS_BROADCAST: WS_UNICAST;
         if (numVal) ctrl |= SERV_LOG;   else ctrl &= ~SERV_LOG;
         if (numVal) ctrl |= TRANS_LOG;  else ctrl &= ~TRANS_LOG;
         if (numVal) ctrl |= ((numVal << 8) & MQTT_LOG);

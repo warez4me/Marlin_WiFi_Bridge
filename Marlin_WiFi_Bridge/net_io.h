@@ -28,7 +28,7 @@ uint8_t netBuf[NET_BUF_SIZE];
 volatile uint32_t netBufBeg = 0, netBufEnd = 0;
 
 struct __attribute__((__packed__)) netData_t {
-  uint32_t time; // Время добавления в очередь
-  uint32_t size;
-  uint8_t cMap;
+  uint32_t time;    // Время добавления в очередь
+  uint32_t size;    // размер сообщения
+  uint16_t cMap;    // битовая маска-карта адресатов
 };

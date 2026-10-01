@@ -14,13 +14,25 @@
 
 #pragma once
 
-/* --- шаблоны ответов Marlin --- */
+/* --- шаблоны для парсинга ответов Marlin и терминальных команд--- */
 // 1. Определение структуры
 struct gAnswer_t {
-  const char* idWord; 
-  uint32_t idLen;
+  const char* idWord;   // указатель на текст для сравнения
+  uint32_t idLen;       // длина текста для сравнения
   };
+
+// индексы всех шаблонов перечислены в пределах единого множества, но некоторые позиции
+// являются "разделителями" между группами
+// процедура поиска ищет совпадение текста, используя массив структур-шаблонов,
+// в пределах группы, начиная от переданного ей стартового индекса,
+// и останавливается , когда встречает структуру, содержащую поле idLen = 0
+// такие структуры соответствуют одному из разделительных индексов
+// ID_NONE, ID_FINDEX, ID_LIST, ID_NONE2
+// причем ID_FINDEX и ID_LIST дополнительно используются как самостоятельные идентификаторы
+// в процедуре обработки терминальных команд myBridgeCmd()
 enum gAnswerID_t {
+// Парсинг начинаем с поиска подстроки основного ИД в начале строки ответа
+// набор структур-шаблонов для этого начинается с индекса ID_OK и заканчиватся индексом ID_AREA
   ID_OK = 0,
   ID_RESEND,
   ID_RS,
@@ -48,6 +60,10 @@ enum gAnswerID_t {
 
   ID_NONE,
 
+// после поиска основного ИД производится поиск пар параметр[:значение]
+// параметры могут находиться как в строке с основным ИД, так и в отдельной строке без основного ИД
+// после подстроки параметра может размещаться числовое значение или другая информация типа имени файла
+// перечень индексов шаблонов параметров начинается с ID_TEMP_T заканчивается ID_SD_PROGRESS
   //самые частые данные
   // Температуры
   ID_TEMP_T,
@@ -69,6 +85,8 @@ enum gAnswerID_t {
 
   ID_FINDEX,
 
+// перечень индексов шаблонов терминальных команд
+// начинается с индекса ID_SYNC и заканчивается ID_INFO
   ID_SYNC,
   ID_EXIT,
   ID_QUERY,
@@ -96,8 +114,10 @@ enum gAnswerID_t {
   ID_ASK,
   ID_VERSION,
   ID_INFO,
+
   ID_LIST,
 
+// набор индексов для шаблонов параметров микрошагов
   ID_STEPS,
   ID_XSTEP,
   ID_YSTEP,
@@ -110,7 +130,7 @@ enum gAnswerID_t {
   ID_NONE3
   };
 /*
-// 2. Имена для индексов (чтобы switch был читаемым)
+// 1.1 Имена для индексов (чтобы switch был читаемым)
 static const char* gAnswerIDName[] PROGMEM __attribute__((aligned(4))) = {
   "ID_OK",      "ID_RESEND",  "ID_RS",        "ID_SS",        "ID_PFT",       "ID_PTF",      //"ID_CAP",
   "ID_ERROR",   "ID_WAIT",    "ID_ECHO",      "ID_ACTION",    "ID_SD_BEGIN",  "ID_SD_END",
@@ -127,6 +147,7 @@ static const char* gAnswerIDName[] PROGMEM __attribute__((aligned(4))) = {
   "ID_NONE3"
   };
 */
+// 2. текст для поиска совпадения
 const char ok_str[]     PROGMEM __attribute__((aligned(4))) = "ok";
 const char resend_str[] PROGMEM __attribute__((aligned(4))) = "Resend:";
 const char rs_str[]     PROGMEM __attribute__((aligned(4))) = "rs";
@@ -320,7 +341,7 @@ static const gAnswer_t gAnswer[] PROGMEM __attribute__((aligned(4))) = {
 
 uint32_t ctrl = 0;                  // маска управления выводом лога отладки
 //uint32_t ctrl = CLIENT_LOG | UART_LOG | SERV_LOG;  // если сразу нужна отладка ставим по вкусу
-bool dBroadcast = false;            // управление режимом вывода лога отладки : true == всем / false == активисту
+uint8_t dBroadcast = WS_UNICAST;    // управление режимом вывода лога отладки : WS_BROADCAST == всем / WS_UNICAST == активисту
 
 // ----- структура для листинга файлов -----
 struct sdFile_t {

@@ -14,8 +14,8 @@
 
 void onOTAStart() {
   netQuePut(NULL, 0, (char*)PSTR("L:,OTA FW update. Just wait..\n"));  // Сообщение в лог всем WS клиентам
-  bridgeState = SYS_OTA;    // переключаем систему в полностью OTA-dedicated режим
-  pubProgress = true; timeProgress = millis() - 50; // "срочная" публикация "OTA_UPDATE"
+  bridgeState = SYS_OTA;                            // переключаем систему в полностью OTA-dedicated режим
+  pubProgress = true; timeProgress = millis() - 50; // "срочная" публикация состояния "OTA_UPDATE"
 }
 
 void onOTAProgress(uint32_t current, uint32_t total) {
@@ -45,10 +45,10 @@ void writeFlash() {
     if (written == chunks[ch_out].len) {
       // 2. Раз флеш успешно записан — учет и запрос на сл.чанк
       countData(written);
-      socket.progress += written;                   // Прибавляем к прогрессу (ЯВНО)
+      socket.progress += written;                     // Прибавляем к прогрессу (ЯВНО)
+                                                      // публикация прогресса в heartbeat()
       fData.txTotal += written; fData.txSeq += 1;
       endReqT = tNow;
-      //onOTAProgress(socket.progress, socket.fSize); // вывод прогресса на LCD принтера
       }
      else errCode |= ERR_OTA_FLASH_ERR;
     }
@@ -57,7 +57,7 @@ void writeFlash() {
     if (!(ch_req) && ((tNow - endReqT) > 50)) {
       endReqT = tNow;
       int32_t len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("N:%d\n"), (socket.clGroup_ID & 0xFFFF));
-      bool b_mem = dBroadcast; dBroadcast = false;
+      uint8_t b_mem = dBroadcast; dBroadcast = WS_UNICAST;
       netQuePut_cid(packet, -len, socket.clWS_ID); dBroadcast = b_mem; // urgent
     } }
 }

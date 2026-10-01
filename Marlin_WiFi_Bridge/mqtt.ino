@@ -341,7 +341,7 @@ void mqttSocketHandler() {
   if (mqttSockData.sockState > MQTT_SOCKET_WAIT) {
     uint32_t packetTime = micros() - mqttSockData.packetStart;
     if (packetTime > 1000000) {                       // Жесткий таймаут — 1 секунда (в мксек)
-      stat(MTR_MQ_PKT_TIME, packetTime);              // статистика обработки пакета
+      STATISTICS(stat(MTR_MQ_PKT_TIME, packetTime));  // статистика времени обработки пакета
       mqttDisconnect();         // Мгновенно рвем сокет, LwIP сам вычистит все буферы ОЗУ
       mqttSockData.lastRC = MQTT_CONNECTION_TIMEOUT;  // Результат операции: ошибка -4
       return;                                         // возврат в общий loop()
@@ -363,7 +363,7 @@ void mqttSocketHandler() {
         mqttSock->read();                             // Побайтово выкидываем мусор из ОЗУ сети
         mqttSockData.remainLen--; }
       if (mqttSockData.remainLen == 0) {
-        stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart)); // статистика обработки пакета
+        STATISTICS(stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart)));   // статистика времени обработки пакета
         mqttSockData.sockState = MQTT_SOCKET_CONNECTED; } // Очистка завершена, готовы к работе
       break;
     case MQTT_SOCKET_READ_REMAIN_LEN: {               // Пошаговый сбор байт длины пакета (Remaining Length)
@@ -372,7 +372,7 @@ void mqttSocketHandler() {
         mqttSockData.remainLen += ((encodedByte & 0x7F) << mqttSockData.multiplier);
         mqttSockData.multiplier += 7;
         if (mqttSockData.multiplier > 21) {           // Защита от битого/бесконечного заголовка (> 4 байт результат)
-          stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart)); // статистика обработки пакета
+          STATISTICS(stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart))); // статистика времени обработки пакета
           mqttDisconnect(); return; }
         if (encodedByte & 0x80) continue;
         // Если старший бит равен 0 — сбор байт длины пакета успешно окончен!
@@ -403,7 +403,7 @@ void mqttSocketHandler() {
       // Как только 2 байта гарантированно собрались из сети, вспоминаем контекст
       if (mqttSockData.packetType == 0x20) {
         // Если мы обрабатываем ответ авторизации CONNACK от брокера
-        stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart)); // статистика обработки пакета
+        STATISTICS(stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart))); // статистика времени обработки пакета
         mqttSockData.lastRC = mqttSockData.idHi;      // 4-й байт пакета (Connect Return Code для массива строк PROGMEM)
         if (mqttSockData.lastRC == MQTT_CONNECTED) {
           mqttSockData.lastPing = tNow;
@@ -448,7 +448,7 @@ void mqttSocketHandler() {
         mqttSockData.topicBytesRead += 1; mqttSockData.remainLen -= 1; }
       if (mqttSockData.topicBytesRead < mqttSockData.payloadLen) break; // дочитаем, когда появятся данные
       mqttSockData.sockState = MQTT_SOCKET_CONNECTED;                   // Возвращаем сокет в режим покоя
-      stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart));     // статистика обработки пакета
+      STATISTICS(stat(MTR_MQ_PKT_TIME, (micros() - mqttSockData.packetStart))); // статистика времени обработки пакета
       uint32_t topicCommandID = (uint32_t)((mqttSockData.idHi << 8) | mqttSockData.idLo);
       if (ctrl & MQTT_SDATA) {
         int len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:>%s[0x%04lX] Len=%u \""),
@@ -619,7 +619,7 @@ void mqttLoop() {
              (listenTime < 3000) &&
               // ОГРАНИЧИТЕЛЬ №2: <= 200 микросекунд на ожидание отсутствующих данных из сети.
              ((listenBreak - lastAvailable) < 200));
-  stat(MTR_MQ_LOOP_TIME, listenTime);   // статистика времени одного прохода mqttSocketHandler()
+  STATISTICS(stat(MTR_MQ_LOOP_TIME, listenTime)); // статистика времени одного прохода mqttSocketHandler()
   // Проверяем условия возврата в общий loop()
   if (!mqttActions) return;             // сокет еще "горячий"
   if (listenTime > 2000) return;        // на чтение ушло слишком много времени
