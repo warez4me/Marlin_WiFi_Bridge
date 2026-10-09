@@ -698,6 +698,10 @@ If the system detects a corrupted EEPROM checksum on startup, drops its WiFi con
 1. **Connect to the AP:** Connect your computer or smartphone to the local open Wi-Fi network named **"Marlin-Bridge-Setup"** hosted by the ESP8266.
 2. **Open the Interface:** Direct your preferred web browser to the configuration gateway: **`http://192.168.9.1/config`**
 3. **Submit Credentials:** Input your home network SSID/Password (<u>required</u>), MQTT broker location, Home Assistant discovery prefix, and your desired device identifier token.
+   * **Click on the Wi-Fi SSID field** to select your network from the dynamic drop-down suggestions list. 
+   * **Desktop vs. Mobile Behavior:** On desktop browsers, the list displays as a standard vertical drop-down menu. On mobile devices (iOS/Android), the list transforms into a horizontal, scrollable bar of quick-action keyboard suggestions placed right above the virtual keyboard.
+   * **Smart Search & Filtering Mechanics:** The complete list of discovered Wi-Fi networks is visible only when the input field is entirely **empty**. As soon as you start typing, the browser automatically filters the list on the fly, showing only the entries that contain your entered characters. 
+   * **Robust Server-Side Parsing:** Regardless of how the network name is entered *(whether it is typed manually as a clean SSID, or submitted as a combined text block from the suggestions list)*, the server-side processing engine will automatically isolate and extract the exact SSID string to store it within the configuration data structure.
 4. **Connection Timeout Rules:** The setup environment triggers a safe automatic restart if no configuration client connects within the first 2 minutes. Once a client successfully opens the configuration webpage, this operational window automatically scales up to 15 minutes.
 5. **Validation & Errors Handling:** The setup process is entirely user-friendly. Upon clicking save, if any required validation conditions are not met, explicit error messages are displayed on the screen, and the configuration session time is extended by an additional 15 minutes to allow for safe correction.
 

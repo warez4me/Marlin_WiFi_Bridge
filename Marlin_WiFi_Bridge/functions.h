@@ -99,13 +99,17 @@ void mqttLoop();
 
 /*--------------------------*/
 /*-------- setup.ino -------*/
+void saveEEPROM();
 void clearConfigInEEPROM();
 uint16_t calculateCRC16(const uint8_t*, size_t);
 bool loadConfigFromEEPROM();
+void scanWiFi();
 void handleGetConfigPage();
 uint16_t parseIP(char*);
 void handleSaveConfig();
 void sta2ap(const char* msg = NULL);
+void handleGetIcon();
+void handleMainPage();
 void syncMarlin();
 void setup();
 

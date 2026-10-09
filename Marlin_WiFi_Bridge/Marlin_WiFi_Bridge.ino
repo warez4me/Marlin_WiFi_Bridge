@@ -737,7 +737,6 @@ void sendBFT(size_t dataSize, uint8_t opMeta, uint8_t pDummy, uint8_t pShrink) {
     ok.waiting = true;  ok.skip = 0; ok.wdTimer = ok.wdLoad = WAIT_OK_TIMEOUT;   // 5 sec
     }
   WITH_FLAG_OFF(UART_SEND, (uart_w((char*)packet, 10 + paySize, true)));
-  ok.time = millis();               // новый отсчет до получения подтверждения от Марлин
   if (ctrl & SERV_LOG) {
     char lBuf[12];
     if (m_ptr)
@@ -1084,8 +1083,9 @@ void checkTimers() {
         if (sdFinal) sdChecked = true; }                // разрешаем heartbeat даже при отсутствии SD
     if (txTimer)                                        // таймер задержки выдачи команды в UART
       if (--txTimer == 0)                               // разрешаем аппаратное прерывание, включаем передачу UART
-        if (uart_tx_buf_beg != uart_tx_buf_end)         // если в буфере есть данные на передачу
+        if (uart_tx_buf_beg != uart_tx_buf_end) {       // если в буфере есть данные на передачу
           SET_PERI_REG_MASK(UART_INT_ENA(UART0), UART_TXFIFO_EMPTY_INT_ENA);
+          ok.time = millis(); }                         // новый отсчет до получения подтверждения от Марлин
     } // if (flag_0125sec)
   if (flag_1sec_1) {
     flag_1sec_1 = false;
@@ -1118,12 +1118,20 @@ void checkTimers() {
     if ((wifi_timer > 0) && (wifi_timer <= 5))
       wifiState = WIFI_STATE_STA;               // разрешаем mqtt ~через 5 сек после WiFi коннекта
     if ((wifi_timer == 8) && (bridgeState != SYS_SYNC_ERROR)) {
-      uartOn(); lastUARTTime = tNow; }          // включаем UART через 2 сек после WiFi коннекта
+      uartOn(); lastUARTTime = tNow;            // включаем UART через 2 сек после WiFi коннекта
+      if (!(cfg.wifi_bset)) {
+        // Перехватываем физический MAC-адрес роутера при успешном коннекте
+        // Делаем commit в EEPROM, как в handleSaveConfig()
+        memcpy(cfg.wifi_bssid, WiFi.BSSID(), 6); cfg.wifi_bset = 1;
+        saveEEPROM(); }
+       }
     if ((tNow > 60000) && (wifiState == WIFI_STATE_STA)) {
       // принудительно разрешаем HB и на вс.случай показываем IP, если Марлин "молчит"
       sdChecked = true; if (!ipKnown && !uartAlive) showIP(tNow); }
     if (sdTimer)                                // таймер отсчета интервала автоскана SD
       if (--sdTimer == 0) sdCanTry = true;
+    if (mqTimer)                                // WD таймер процесса MQTT Discovery
+      if (--mqTimer == 0) mqttDisconnect(false);// запрос перерегистрации всех сущностей Home Assistant, сокет не закрываем
     } // if (flag_1sec_1)
 }
 

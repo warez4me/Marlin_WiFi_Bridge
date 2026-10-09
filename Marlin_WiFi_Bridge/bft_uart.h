@@ -36,3 +36,5 @@ volatile uint32_t uart_tx_buf_beg = 0, uart_tx_buf_end = 0;
 
 bool uart_on[2] = {false, false};
 volatile bool uartWxStop = false;
+
+uint32_t txTime = 0;

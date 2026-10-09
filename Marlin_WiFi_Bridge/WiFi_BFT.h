@@ -156,7 +156,7 @@ static const char* brStateName[] PROGMEM __attribute__((aligned(4))) = {
 #define STR_LEN_SHORT 32
 #define CONFIG_MAGIC  0x4D425632 // Сигнатура "MBV2"
 
-struct Config {
+struct __attribute__((__packed__)) Config {
   uint32_t magic;
   char wifi_ssid[STR_LEN_SHORT * 2];
   char wifi_pass[STR_LEN_SHORT * 2];
@@ -166,6 +166,8 @@ struct Config {
   char ha_prefix[STR_LEN_SHORT];
   char device_id[STR_LEN_SHORT];
   uint16_t mqtt_port;
+  uint8_t wifi_bssid[6];
+  uint16_t wifi_bset;
   uint16_t crc;
 } cfg;
 /*^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
@@ -294,18 +296,18 @@ struct BridgeMsg_t {
 };
 
 // допустимые шаблоны начала строк WSMessage
-const char bmFile[]  PROGMEM __attribute__((aligned(4))) = "F:";  // MSG_FILE
-const char bmStart[] PROGMEM __attribute__((aligned(4))) = "S:";  // MSG_START
-const char bmEnd[]   PROGMEM __attribute__((aligned(4))) = "E:";  // MSG_END
-const char bmPrint[] PROGMEM __attribute__((aligned(4))) = "P:";  // MSG_PRINT
-const char bmTime[]  PROGMEM __attribute__((aligned(4))) = "T:";  // MSG_TIME
-const char bmL[]     PROGMEM __attribute__((aligned(4))) = "L:";  // MSG_SCREAM
-const char bmG[]     PROGMEM __attribute__((aligned(4))) = "G";   // MSG_GCODE
-const char bmM[]     PROGMEM __attribute__((aligned(4))) = "M";   // MSG_GCODE
-const char bmT[]     PROGMEM __attribute__((aligned(4))) = "T";   // MSG_GCODE
-const char bmEmpty[] PROGMEM __attribute__((aligned(4))) = "";
+const char bmFile[]  PROGMEM = "F:";  // MSG_FILE
+const char bmStart[] PROGMEM = "S:";  // MSG_START
+const char bmEnd[]   PROGMEM = "E:";  // MSG_END
+const char bmPrint[] PROGMEM = "P:";  // MSG_PRINT
+const char bmTime[]  PROGMEM = "T:";  // MSG_TIME
+const char bmL[]     PROGMEM = "L:";  // MSG_SCREAM
+const char bmG[]     PROGMEM = "G";   // MSG_GCODE
+const char bmM[]     PROGMEM = "M";   // MSG_GCODE
+const char bmT[]     PROGMEM = "T";   // MSG_GCODE
+const char bmEmpty[] PROGMEM = "";
 
-static const BridgeMsg_t bridgeMsg[] PROGMEM __attribute__((aligned(4))) = {
+const BridgeMsg_t bridgeMsg[] PROGMEM __attribute__((aligned(4))) = {
   {bmFile, 2, 5},   {bmStart, 2, 1},  {bmEnd, 2, 9},  {bmPrint, 2, 5}, 
   {bmTime, 2, 10},  {bmL, 2, 5},  {bmG, 1, 4},  {bmM, 1, 4},  {bmT, 1, 2},
   {bmEmpty, 0, 0}};
@@ -434,3 +436,22 @@ const char* const ann[] PROGMEM __attribute__((aligned(4))) = {
   ann_prnreq_bad, ann_prn_noname, ann_prn_x_name, ann_prn_x_size,
   ann_scream_bad, ann_ok_bad,     ann_gcode_bad,  ann_gcode_busy,
   ann_parse_err,  ann_msg_bad,    ann_bin_bad };
+
+/////////////
+// Переменные для использования в scanWiFi()
+// 1. Описываем структуру для карты сигналов
+struct SignalMap {
+  int8_t threshold;    // Порог уровня сигнала RSSI
+  const char* secured; // Префикс для защищенной сети
+  const char* openNet; // Префикс для открытой сети
+  };
+// 2. Инициализируем массив структур для получения строки префикса (9 символов)
+// 2.1. Сначала жестко кладем сами строки во Flash-память
+const char s55[] PROGMEM = " [>>>>]#""\x01"; const char o55[] PROGMEM = " [>>>>] ""\x01";
+const char s65[] PROGMEM = " [>>>-]#""\x01"; const char o65[] PROGMEM = " [>>>-] ""\x01";
+const char s75[] PROGMEM = " [>>--]#""\x01"; const char o75[] PROGMEM = " [>>--] ""\x01";
+const char s85[] PROGMEM = " [>---]#""\x01"; const char o85[] PROGMEM = " [>---] ""\x01";
+// 2.2. Теперь отправляем сам массив структур во Flash
+const SignalMap sigTable[4] PROGMEM = {
+  {-55,  s55,  o55}, {-65,  s65,  o65}, {-75,  s75,  o75}, {-85, s85, o85} };
+

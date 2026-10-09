@@ -159,7 +159,7 @@ uint32_t uart_w(char* src, uint32_t len, bool flush) {
       // При необходимости корректируем размер лога
       if (sz > maxLogSz) sz = maxLogSz;
       for (int i = 0; (i < sz); i++)
-        if (logBuf[i] == '\n') logBuf[i] = '\\';    // визуализируем переводы строки
+        if (logBuf[i] == '\n') logBuf[i] = '\\';  // визуализируем переводы строки
       logBuf[sz++] = '\n';
       // Передаем RAM-копию в сетевую очередь WebSockets (возможен отказ, если кольцевой буфер забит)
       if (!netQuePut((uint8_t*)logBuf, sz, (char*)PSTR("L:>"), socket.clWS_ID)) {
@@ -170,8 +170,9 @@ uint32_t uart_w(char* src, uint32_t len, bool flush) {
   // Включаем прерывание на "пустоту" TX FIFO, чтобы начать/продолжить физическую отправку чипом
   // дополнительное условие - сброшенное состояние таймера задержки
   if (!(txTimer))
-    if ((sz) || flush)
+    if ((sz) || flush) {
       SET_PERI_REG_MASK(UART_INT_ENA(UART0), UART_TXFIFO_EMPTY_INT_ENA);
+      ok.time = millis(); }                       // новый отсчет до получения подтверждения от Марлин
   return sz;
 }
 

@@ -26,7 +26,7 @@ button{width:100%;padding:10px;margin-top:20px;background:#4af;border:none;color
 button:hover{background:#5bf}#t{margin-top:15px;text-align:center;font-weight:bold}
 </style></head><body><div class="box"><h2>Marlin WiFi bridge configuration</h2>
 <form id="f"><input type="hidden" id="o" name="o" value="0">
-<label>1.Wi-Fi SSID</label><input type="text" id="s" name="s" required>
+<label>1.Wi-Fi SSID</label><input type="text" id="s" name="s" list="l" required><datalist id="l"></datalist>
 <label>2.Wi-Fi password</label><input type="password" id="p" name="p">
 <label style="display:block; margin-top:15px; font-size:14px; cursor:pointer;">
   <input type="checkbox" id="v" style="width:auto; transform:scale(1.3); margin-right:8px; vertical-align:middle;">View password</label>
@@ -38,39 +38,44 @@ button:hover{background:#5bf}#t{margin-top:15px;text-align:center;font-weight:bo
 <button type="submit">SAVE and RESTART</button></form><div id="t"></div></div>
 <script>
 
-document.addEventListener('DOMContentLoaded',function(){
-  const r=new XMLHttpRequest();
-  r.open('GET',document.location,false);
+document.addEventListener('DOMContentLoaded', () => {
+  const r = new XMLHttpRequest();
+  // Добавляем к адресу короткий маркер ?l=1
+  r.open('GET', document.location + '?l=1', false);
   r.send(null);
-  // Читаем заголовки и заполняем по name через коллекцию формы f
-  // 1. скрытый Anti-CSRF токен безопасности 'o'
-  o.value=r.getResponseHeader('x')||'0';
-  // 2. остальные
-  s.value = r.getResponseHeader('s') || '';
-  i.value = r.getResponseHeader('i') || '';
-  u.value = r.getResponseHeader('u') || '';
-  h.value = r.getResponseHeader('h') || '';
-  d.value = r.getResponseHeader('d') || '';
+  // Получаем список доступных сетей и заполненные параметры конфигурации
+  // парсим ответ и заполняем поля формы
+  r.responseText.split('\x02').forEach(n => {
+    const p = n.split('\x01');
+    if (p[1]) {
+      // Если в window есть глобальный элемент с id из p[0]
+      // Подменяем 'x' на 'o'
+      if (window[p[0] == 'x' ? 'o' : p[0]]) {
+       window[p[0] == 'x' ? 'o' : p[0]].value = p[1];
+      } else
+        // Иначе это сеть: p[0] - стрелочки, p[1] - SSID
+        // для браузерной совместимости делаем text = value = "SSID + Стрелочки"
+        l.appendChild(new Option(p[1] + p[0]));
+    }
+  });
 });
 
-f.addEventListener('submit', function(e) {
-    e.preventDefault(); t.style.color = '#fff'; t.innerText = 'Sending..';
-    fetch('/config', { method: 'POST', body: new URLSearchParams(new FormData(f))
-    }).then(r => {
-      t.style.color = r.ok ? '#0f0' : '#f32';
-      return r.text();
-    }).then(k => {
-      t.innerText = k;
-    }).catch(() => {
-      t.style.color='#f32';
-      t.innerText='Network error';
-    });
+f.addEventListener('submit', e => {
+  e.preventDefault(); t.style.color = '#fff'; t.innerText = 'Sending..';
+  fetch('/config', { method: 'POST', body: new URLSearchParams(new FormData(f))
+  }).then(r => {
+    t.style.color = r.ok ? '#0f0' : '#f32';
+    return r.text();
+  }).then(k => {
+    t.innerText = k;
+  }).catch(() => {
+    t.style.color='#f32';
+    t.innerText='Network error';
+  });
 });
 
-v.addEventListener('change', function() {
-  // Если чекбокс нажат, меняем тип полей на text, иначе - возвращаем password
-  p.type = w.type = this.checked ? 'text' : 'password';
+v.addEventListener('change', () => {
+  p.type = w.type = v.checked ? 'text' : 'password';
 });
 </script></body></html>
 )=====";
-

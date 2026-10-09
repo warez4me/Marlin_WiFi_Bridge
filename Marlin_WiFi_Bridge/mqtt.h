@@ -70,3 +70,6 @@ struct {
   uint8_t  idHi = 0;
   uint8_t  buf[SVC_BUF_SIZE] = {0};
   } mqttSockData;
+
+#define MQTT_DISCOVERY_TIME 2   // секунд, WD таймаут на завершение процесса MQTT Discovery
+uint32_t mqTimer = 0;           // WD таймер процесса MQTT Discovery

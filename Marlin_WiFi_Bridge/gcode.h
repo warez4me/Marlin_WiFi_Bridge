@@ -131,7 +131,7 @@ enum gAnswerID_t {
   };
 /*
 // 1.1 Имена для индексов (чтобы switch был читаемым)
-static const char* gAnswerIDName[] PROGMEM __attribute__((aligned(4))) = {
+static const char* gAnswerIDName[] PROGMEM  = {
   "ID_OK",      "ID_RESEND",  "ID_RS",        "ID_SS",        "ID_PFT",       "ID_PTF",      //"ID_CAP",
   "ID_ERROR",   "ID_WAIT",    "ID_ECHO",      "ID_ACTION",    "ID_SD_BEGIN",  "ID_SD_END",
   "ID_OPEN_FAIL", "ID_WR_START", "ID_WR_DONE",  "ID_DEL_FAIL",  "ID_DELETED",  "ID_SELECTED", "ID_PRN_DONE", "ID_NO_PRN", "ID_AREA",
@@ -148,87 +148,87 @@ static const char* gAnswerIDName[] PROGMEM __attribute__((aligned(4))) = {
   };
 */
 // 2. текст для поиска совпадения
-const char ok_str[]     PROGMEM __attribute__((aligned(4))) = "ok";
-const char resend_str[] PROGMEM __attribute__((aligned(4))) = "Resend:";
-const char rs_str[]     PROGMEM __attribute__((aligned(4))) = "rs";
-const char ss_str[]     PROGMEM __attribute__((aligned(4))) = "ss";
-const char pft_str[]    PROGMEM __attribute__((aligned(4))) = "PFT:";
-const char ptf_str[]    PROGMEM __attribute__((aligned(4))) = "PTF:";
+const char ok_str[]     PROGMEM  = "ok";
+const char resend_str[] PROGMEM  = "Resend:";
+const char rs_str[]     PROGMEM  = "rs";
+const char ss_str[]     PROGMEM  = "ss";
+const char pft_str[]    PROGMEM  = "PFT:";
+const char ptf_str[]    PROGMEM  = "PTF:";
 //const char cap_str[]    PROGMEM = "Cap:";
 
-const char error_str[]  PROGMEM __attribute__((aligned(4))) = "Error:";
-const char wait_str[]   PROGMEM __attribute__((aligned(4))) = "wait";
-const char echo_str[]   PROGMEM __attribute__((aligned(4))) = "echo:";
-const char action_str[] PROGMEM __attribute__((aligned(4))) = "//action:";
-const char sdBeg_str[]  PROGMEM __attribute__((aligned(4))) = "Begin";    // "Begin file list";
+const char error_str[]  PROGMEM  = "Error:";
+const char wait_str[]   PROGMEM  = "wait";
+const char echo_str[]   PROGMEM  = "echo:";
+const char action_str[] PROGMEM  = "//action:";
+const char sdBeg_str[]  PROGMEM  = "Begin";    // "Begin file list";
 
-const char sdEnd_str[]  PROGMEM __attribute__((aligned(4))) = "End f";    // "End file list";
-const char sdOpen_str[] PROGMEM __attribute__((aligned(4))) = "open f";   // "open failed,
-const char sdWrite_str[] PROGMEM __attribute__((aligned(4))) = "Writing"; // "Writing to file:
-const char sdDone_str[] PROGMEM __attribute__((aligned(4))) = "Done s";   // "Done saving file
-const char sdDelX_str[] PROGMEM __attribute__((aligned(4))) = "Deletion"; // "Deletion failed
-const char sdFDel_str[] PROGMEM __attribute__((aligned(4))) = "File d";   // "File deleted:
-const char sdFSel_str[] PROGMEM __attribute__((aligned(4))) = "File se";  // "File selected
-const char prnDone_str[] PROGMEM __attribute__((aligned(4))) = "Done p";  // "Done printing file"
-const char noPrn_str[]  PROGMEM __attribute__((aligned(4))) = "Not SD";   // "Not SD printing"
-const char area_str[]   PROGMEM __attribute__((aligned(4))) = "area:{";
+const char sdEnd_str[]  PROGMEM  = "End f";    // "End file list";
+const char sdOpen_str[] PROGMEM  = "open f";   // "open failed,
+const char sdWrite_str[] PROGMEM  = "Writing"; // "Writing to file:
+const char sdDone_str[] PROGMEM  = "Done s";   // "Done saving file
+const char sdDelX_str[] PROGMEM  = "Deletion"; // "Deletion failed
+const char sdFDel_str[] PROGMEM  = "File d";   // "File deleted:
+const char sdFSel_str[] PROGMEM  = "File se";  // "File selected
+const char prnDone_str[] PROGMEM  = "Done p";  // "Done printing file"
+const char noPrn_str[]  PROGMEM  = "Not SD";   // "Not SD printing"
+const char area_str[]   PROGMEM  = "area:{";
 
-const char t_str[]      PROGMEM __attribute__((aligned(4))) = "T:";
-const char b_str[]      PROGMEM __attribute__((aligned(4))) = "B:";
-const char x_str[]      PROGMEM __attribute__((aligned(4))) = "X:";
-const char y_str[]      PROGMEM __attribute__((aligned(4))) = "Y:";
-const char z_str[]      PROGMEM __attribute__((aligned(4))) = "Z:";
-const char e_str[]      PROGMEM __attribute__((aligned(4))) = "E:";
-const char sxyz_str[]   PROGMEM __attribute__((aligned(4))) = "S_XYZ:";
+const char t_str[]      PROGMEM  = "T:";
+const char b_str[]      PROGMEM  = "B:";
+const char x_str[]      PROGMEM  = "X:";
+const char y_str[]      PROGMEM  = "Y:";
+const char z_str[]      PROGMEM  = "Z:";
+const char e_str[]      PROGMEM  = "E:";
+const char sxyz_str[]   PROGMEM  = "S_XYZ:";
 
-const char sdOK_str[]   PROGMEM __attribute__((aligned(4))) = "SD card ok";
-const char sdrls_str[]  PROGMEM __attribute__((aligned(4))) = "SD card re"; // leased
-const char sdno1_str[]  PROGMEM __attribute__((aligned(4))) = "No SD card";
-const char sdno2_str[]  PROGMEM __attribute__((aligned(4))) = "No media";
-const char notify_str[] PROGMEM __attribute__((aligned(4))) = "notification ";
-const char busy_str[]   PROGMEM __attribute__((aligned(4))) = "busy: pr";
-const char sdprn_str[]  PROGMEM __attribute__((aligned(4))) = "SD printing byte";
+const char sdOK_str[]   PROGMEM  = "SD card ok";
+const char sdrls_str[]  PROGMEM  = "SD card re"; // leased
+const char sdno1_str[]  PROGMEM  = "No SD card";
+const char sdno2_str[]  PROGMEM  = "No media";
+const char notify_str[] PROGMEM  = "notification ";
+const char busy_str[]   PROGMEM  = "busy: pr";
+const char sdprn_str[]  PROGMEM  = "SD printing byte";
 
-const char sync_str[]   PROGMEM __attribute__((aligned(4))) = "SYNC)";
-const char exit_str[]   PROGMEM __attribute__((aligned(4))) = "EXIT)";
-const char query_str[]  PROGMEM __attribute__((aligned(4))) = "QUERY)";
-const char open_str[]   PROGMEM __attribute__((aligned(4))) = "OPEN)";
-const char close_str[]  PROGMEM __attribute__((aligned(4))) = "CLOSE)";
-const char abort_str[]  PROGMEM __attribute__((aligned(4))) = "ABORT)";
-const char rst_str[]    PROGMEM __attribute__((aligned(4))) = "R)";
-const char cfg_str[]    PROGMEM __attribute__((aligned(4))) = "X)";
-const char ota_str[]    PROGMEM __attribute__((aligned(4))) = "O)";
+const char sync_str[]   PROGMEM  = "SYNC)";
+const char exit_str[]   PROGMEM  = "EXIT)";
+const char query_str[]  PROGMEM  = "QUERY)";
+const char open_str[]   PROGMEM  = "OPEN)";
+const char close_str[]  PROGMEM  = "CLOSE)";
+const char abort_str[]  PROGMEM  = "ABORT)";
+const char rst_str[]    PROGMEM  = "R)";
+const char cfg_str[]    PROGMEM  = "X)";
+const char ota_str[]    PROGMEM  = "O)";
 
-const char dt_str[]     PROGMEM __attribute__((aligned(4))) = "T)";
-const char du_str[]     PROGMEM __attribute__((aligned(4))) = "U)";
-const char ds_str[]     PROGMEM __attribute__((aligned(4))) = "S)";
-const char dc_str[]     PROGMEM __attribute__((aligned(4))) = "C)";
-const char dm_str[]     PROGMEM __attribute__((aligned(4))) = "M)";
-const char dp_str[]     PROGMEM __attribute__((aligned(4))) = "P)";
-const char dall_str[]   PROGMEM __attribute__((aligned(4))) = "*)";
+const char dt_str[]     PROGMEM  = "T)";
+const char du_str[]     PROGMEM  = "U)";
+const char ds_str[]     PROGMEM  = "S)";
+const char dc_str[]     PROGMEM  = "C)";
+const char dm_str[]     PROGMEM  = "M)";
+const char dp_str[]     PROGMEM  = "P)";
+const char dall_str[]   PROGMEM  = "*)";
 
-const char pgup_str[]   PROGMEM __attribute__((aligned(4))) = "-)";
-const char pgdown_str[] PROGMEM __attribute__((aligned(4))) = "+)";
-const char showpath_str[] PROGMEM __attribute__((aligned(4))) = ".)";
-const char h_str[]      PROGMEM __attribute__((aligned(4))) = "H)";
-const char h0_str[]     PROGMEM __attribute__((aligned(4))) = "?)";
-const char v_str[]      PROGMEM __attribute__((aligned(4))) = "V)";
-const char i_str[]      PROGMEM __attribute__((aligned(4))) = "I)";
+const char pgup_str[]   PROGMEM  = "-)";
+const char pgdown_str[] PROGMEM  = "+)";
+const char showpath_str[] PROGMEM  = ".)";
+const char h_str[]      PROGMEM  = "H)";
+const char h0_str[]     PROGMEM  = "?)";
+const char v_str[]      PROGMEM  = "V)";
+const char i_str[]      PROGMEM  = "I)";
 
-const char steps_str[]  PROGMEM __attribute__((aligned(4))) = "Count ";
-const char xs_str[]     PROGMEM __attribute__((aligned(4))) = "X:";
-const char ys_str[]     PROGMEM __attribute__((aligned(4))) = "Y:";
-const char zs_str[]     PROGMEM __attribute__((aligned(4))) = "Z:";
+const char steps_str[]  PROGMEM  = "Count ";
+const char xs_str[]     PROGMEM  = "X:";
+const char ys_str[]     PROGMEM  = "Y:";
+const char zs_str[]     PROGMEM  = "Z:";
 
-/*const char captemp_str[]  PROGMEM __attribute__((aligned(4))) = "AUTOREPORT_TEMP:";       // ID_CAP_TB 
-const char capcoord_str[] PROGMEM __attribute__((aligned(4))) = "AUTOREPORT_POS:";        // ID_CAP_XYZ
-const char capsdpos_str[] PROGMEM __attribute__((aligned(4))) = "AUTOREPORT_SD_STATUS:";  // ID_CAP_SDPOS*/
+/*const char captemp_str[]  PROGMEM  = "AUTOREPORT_TEMP:";       // ID_CAP_TB 
+const char capcoord_str[] PROGMEM  = "AUTOREPORT_POS:";        // ID_CAP_XYZ
+const char capsdpos_str[] PROGMEM  = "AUTOREPORT_SD_STATUS:";  // ID_CAP_SDPOS*/
 
-const char zero_str[]   PROGMEM __attribute__((aligned(4))) = "";
+const char zero_str[]   PROGMEM  = "";
 
 // 3. Массив структур в PROGMEM
 // Атрибут aligned(4) важен для ESP8266 для быстрого доступа
-static const gAnswer_t gAnswer[] PROGMEM __attribute__((aligned(4))) = {
+static const gAnswer_t gAnswer[] PROGMEM  = {
   {ok_str, 2},      // ID_OK
   {resend_str, 7},  // ID_RESEND  (Длинный формат: "Resend: 123")
   {rs_str, 2},      // ID_RS      (Короткий (BFT) формат: "rs123")
@@ -381,7 +381,7 @@ struct strMem_t {
 
 #define GANSWER_BUF_SIZE  8192
 
-char gAnswer_buf[GANSWER_BUF_SIZE];
+char gAnswer_buf[GANSWER_BUF_SIZE] ; // !! aligned(4) для scanWiFi()
 uint32_t gAnswer_idx = 0, anchorIdx = 0, timeResend = 0, busyMarkerTime = 0;
 char* gDataPtr = NULL;
 bool fListMode = false, sdIsOK = true, samePos = true, ipKnown = false;
@@ -393,6 +393,6 @@ const char qWifi_good[] PROGMEM = "good";
 const char qWifi_avg[]  PROGMEM = "average";
 const char qWifi_bad[]  PROGMEM = "bad";
 
-static const char* qWifiStr[] PROGMEM __attribute__((aligned(4))) = {
+static const char* qWifiStr[] PROGMEM  = {
   qWifi_ex, qWifi_good, qWifi_avg, qWifi_bad };
 

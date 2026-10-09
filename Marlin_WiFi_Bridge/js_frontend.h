@@ -15,7 +15,7 @@
 const char INDEX_HTML[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<link rel="icon" href="data:,"><title>Marlin Bridge</title>
+<title>Marlin Bridge</title>
 <style>
   /* --- 1. ОБЩИЕ НАСТРОЙКИ --- */
   * { box-sizing: border-box; } /* Размеры включают внутренние отступы */

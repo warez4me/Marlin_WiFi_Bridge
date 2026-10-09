@@ -630,6 +630,7 @@ void mqttLoop() {
   /*--- 3.1 публикация данных ---*/
   if (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED) {
     // здесь полный коннект с брокером - можно публиковать текущие значения параметров
+    mqTimer = 0;      // сбрасываем  WD таймер процесса MQTT Discovery
     static uint32_t pubTime = 0, pollTime = 0, tbPollTime = 0, xyzPollTime = 0, pgsPollTime = 0;
     int jsonLen = 0;
     // Отправляем данные через 50 мсек после обновления;
@@ -732,7 +733,7 @@ void mqttLoop() {
     if ((fmt_sec) && (bridgeState == SYS_OTA_END)) doReboot();
     return; // Уступаем квант времени Marlin и WebSockets
     } // if (dState[DISCOVERY_COUNT - 1] == DISCOVERY_ANNOUNCED)
-  /*--- 3.2 механизм DISCOVERY ---*/
+  /*--- 4. механизм DISCOVERY ---*/
   // если попали сюда - нужно изменить состояние членов массива dState, т.е. анонсировать сущности для HA
   // в исходном состоянии и при дисконнектах значение для всех членов устанавливается равным DISCOVERY_EXPIRED
   // Общий алгоритм действий такой - сканируется массив dState и по очереди весь массив приводится к состоянию,
@@ -751,6 +752,7 @@ void mqttLoop() {
     if (buildMqttTopic(i, &isCmdTopic, &payload)) {             // конструируем строку в соответствии с полями массива pub_data
       char* topic = (char*)packet;                              // получаем указатель на строку топика и на шаблон payload из PROGMEM
       if (dState[DISCOVERY_COUNT - 1] == DISCOVERY_EXPIRED) {   // 1-й цикл
+        if (!(i) && !(mqTimer)) mqTimer = MQTT_DISCOVERY_TIME;  // в начале цикла заряжаем WD таймер
         if (isCmdTopic) {                                       // если командный топик, брокер не трогаем,
           dState[i] = DISCOVERY_CONNECTED;  continue; }         // просто поднимаем статус и делаем еще итерацию
          else if (mqttPublish(topic, (const char*)(""), true))  // если не командный топик - чистим конфигурацию (публикуем пустую строку с retain = true)
