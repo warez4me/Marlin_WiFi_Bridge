@@ -158,13 +158,13 @@ static const char* brStateName[] PROGMEM __attribute__((aligned(4))) = {
 
 struct __attribute__((__packed__)) Config {
   uint32_t magic;
-  char wifi_ssid[STR_LEN_SHORT * 2];
-  char wifi_pass[STR_LEN_SHORT * 2];
-  char   mqtt_ip[STR_LEN_SHORT];
-  char mqtt_user[STR_LEN_SHORT];
-  char mqtt_pass[STR_LEN_SHORT];
-  char ha_prefix[STR_LEN_SHORT];
-  char device_id[STR_LEN_SHORT];
+  char wifi_ssid[STR_LEN_SHORT + 1];
+  char wifi_pass[(STR_LEN_SHORT * 2) + 1];
+  char   mqtt_ip[STR_LEN_SHORT + 1];
+  char mqtt_user[STR_LEN_SHORT + 1];
+  char mqtt_pass[STR_LEN_SHORT + 1];
+  char ha_prefix[STR_LEN_SHORT + 1];
+  char device_id[STR_LEN_SHORT + 1];
   uint16_t mqtt_port;
   uint8_t wifi_bssid[6];
   uint16_t wifi_bset;

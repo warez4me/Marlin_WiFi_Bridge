@@ -65,7 +65,7 @@ bool loadConfigFromEEPROM() {
 }
 
 #define WIFI_PFX_LEN  9
-#define WIFI_LIST_REC 42
+#define WIFI_LIST_REC (WIFI_PFX_LEN + STR_LEN_SHORT + 1)
 #define WIFI_LIST_NUM 100
 #define WIFI_LIST_LIM (WIFI_LIST_REC * WIFI_LIST_NUM)
 
@@ -77,7 +77,7 @@ void handleGetConfigPage() {
   if (httpServer.hasArg("l")) {
     // Если есть GET-аргумент "l"
     // Проверяем наличие списка сетей
-    if ((gAnswer_idx > WIFI_LIST_LIM) || (anchorIdx != WIFI_LIST_LIM) || (gAnswer_buf[gAnswer_idx - 1] != '\x02'))
+    if ((gAnswer_idx <= WIFI_PFX_LEN) || (gAnswer_idx > WIFI_LIST_LIM) || (anchorIdx != WIFI_LIST_LIM) || (gAnswer_buf[gAnswer_idx - 1] != '\x02'))
       gAnswer_idx = 0;
     // Нам нужно дописать параметры в конец готового списка сетей.
     // Используем текущий gAnswer_idx как точку старта.
@@ -143,19 +143,19 @@ void handleSaveConfig() {
   if (sessionID != strtoul(httpServer.arg("o").c_str(), NULL, 10)) {
     httpServer.send(403, (const char*)PSTR("text/plain"), eMsg);
     return; }
-  int len = 0;
+  uint32_t len = 0;
   eMsg = PSTR("Error. Field ");
-  struct { const char* sym; int fieldSeq; } prm[6] = {{"s", 1}, {"u", 4}, {"w", 5}, {"h", 6}, {"d", 7}};
+  struct { const char* sym; int fieldSeq; } prm[5] = {{"s", 1}, {"u", 4}, {"w", 5}, {"h", 6}, {"d", 7}};
   for (int i = 0; i < 5; i++) {
-    if (httpServer.arg(prm[i].sym).length() >= ((i)? STR_LEN_SHORT: (STR_LEN_SHORT + WIFI_PFX_LEN))) {
+    if (httpServer.arg(prm[i].sym).length() > ((i)? STR_LEN_SHORT: (WIFI_LIST_REC - 1))) {
       if (!(len)) len = snprintf_P((char*)packet, sizeof(packet), eMsg);
       len += snprintf_P((char*)(packet + len), sizeof(packet) - len, PSTR("%d,"), prm[i].fieldSeq);
     } }
-  if (len) len += snprintf_P((char*)(packet + len - 1), sizeof(packet) - len + 1, PSTR(" too long (>%d)"), STR_LEN_SHORT - 1);
-  if (httpServer.arg("p").length() >= ((STR_LEN_SHORT * 2) - 1)) {
+  if (len) len += snprintf_P((char*)(packet + len - 1), sizeof(packet) - len + 1, PSTR(" too long (>%d)"), STR_LEN_SHORT);
+  if (httpServer.arg("p").length() > (STR_LEN_SHORT * 2)) {
     if (!(len)) len = snprintf_P((char*)packet, sizeof(packet), eMsg);
      else len += snprintf_P((char*)(packet + len), sizeof(packet) - len, PSTR("; "));
-    snprintf_P((char*)(packet + len), sizeof(packet) - len, PSTR("2 too long (>%d)"), ((STR_LEN_SHORT * 2) - 1));
+    snprintf_P((char*)(packet + len), sizeof(packet) - len, PSTR("2 too long (>%d)"), (STR_LEN_SHORT * 2));
     }
   if (len) {
     httpServer.send(400, (const char*)PSTR("text/plain"), (char*)packet);
@@ -166,16 +166,16 @@ void handleSaveConfig() {
   // SSID обязателен к заполнению всегда
   // из-за мороки с совместимостью возможен приход комбинированной строки SSID + prefix
   // поэтому нужно найти окончание строки SSID и отсечь prefix
-  uint32_t sLen = httpServer.arg("s").length();
-  if (sLen) {
-    strncpy(svcBuf, httpServer.arg("s").c_str(), sLen);
-    for (; (sLen); sLen--) {
-      char c = svcBuf[sLen - 1];
+  len = httpServer.arg("s").length();
+  if (len) {
+    strncpy(svcBuf, httpServer.arg("s").c_str(), len);
+    for (; (len); len--) {
+      char c = svcBuf[len - 1];
       // Если уперлись в легитимный символ имени сети (не префикс и не пробел)
       if (c != ' ' && c != '#' && c != '.' && c != '[' && c != ']' && c != '>' && c != '-') {
-        svcBuf[sLen] = '\0'; break; } // отсекаем хвост префикса и выходим из цикла
+        svcBuf[len] = '\0'; break; } // отсекаем хвост префикса и выходим из цикла
     } }
-  if (!(sLen)) {
+  if (!(len)) {
     httpServer.send(400, (const char*)PSTR("text/plain"), (const char*)PSTR("Error. Missing SSID."));
     uartWxStop = false;
     uart_w((char*)PSTR("M117 Missing SSID..\n"));
@@ -199,17 +199,17 @@ void handleSaveConfig() {
   // НАДЁЖНАЯ ЗАПИСЬ СТРУКТУРЫ
   memset(&cfg, 0, sizeof(Config)); // Очищаем всё нулями
   // Копируем Wi-Fi параметры (безопасный strncpy)
-  strncpy(cfg.wifi_ssid, svcBuf, sLen);
-  strncpy(cfg.wifi_pass, httpServer.arg("p").c_str(), (STR_LEN_SHORT * 2 - 1));
+  strncpy(cfg.wifi_ssid, svcBuf, len);
+  strncpy(cfg.wifi_pass, httpServer.arg("p").c_str(), (STR_LEN_SHORT * 2));
   // Копируем MQTT, только если блок полностью валиден
   if (mqtt_port) {
-    strncpy(cfg.mqtt_ip,   httpServer.arg("i").c_str(), STR_LEN_SHORT - 1); // Чистый IP без порта
-    strncpy(cfg.mqtt_user, httpServer.arg("u").c_str(), STR_LEN_SHORT - 1);
-    strncpy(cfg.mqtt_pass, httpServer.arg("w").c_str(), STR_LEN_SHORT - 1);
+    strncpy(cfg.mqtt_ip,   httpServer.arg("i").c_str(), STR_LEN_SHORT); // Чистый IP без порта
+    strncpy(cfg.mqtt_user, httpServer.arg("u").c_str(), STR_LEN_SHORT);
+    strncpy(cfg.mqtt_pass, httpServer.arg("w").c_str(), STR_LEN_SHORT);
     strncpy(cfg.ha_prefix,        // "h" - по умолчанию подставляется homeassistant
             (httpServer.arg("h").length())? httpServer.arg("h").c_str(): fl2chr(PSTR("homeassistant")),
-            STR_LEN_SHORT - 1);
-    strncpy(cfg.device_id, httpServer.arg("d").c_str(), STR_LEN_SHORT - 1);
+            STR_LEN_SHORT);
+    strncpy(cfg.device_id, httpServer.arg("d").c_str(), STR_LEN_SHORT);
     cfg.mqtt_port = mqtt_port; }
   cfg.magic = CONFIG_MAGIC;       // Заполняем системный маркер
   saveEEPROM();                   // Записываем
@@ -226,7 +226,7 @@ void scanWiFi() {
   // Для хранения используем свободный при отключенном UART gAnswer_buf[8192]
   char* ssid = svcBuf;                  // сюда будем помещать получаемую строку SSID при сканировании
   int hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (cfg.wifi_bset));                     // 0|1 , если знаем "свой" BSSID
-  if (!(hasConfig)) hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (cfg.wifi_ssid)) << 1;  // 0|2 , если ещё не успели сохранить
+  if (!(hasConfig)) hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (*cfg.wifi_ssid)) << 1; // 0|2 , если BSSID ещё не успели сохранить
   // 3. ЗАБИВАЕМ РЕЗЕРВНУЮ ЗОНУ ПУСТЫШКАМИ "\x01\x02" ЧЕРЕЗ СКОРОСТНУЮ ЗАПИСЬ В LE UINT32_T
   // 11*2 штук по 2 байта = 44 байта.
   // сюда, в начало списка, будет помещена запись для текущей сконфигурированной сети
@@ -236,12 +236,12 @@ void scanWiFi() {
     le_ptr[anchorIdx] = 0x02010201;     // В память ляжет 0x01, 0x02, 0x01, 0x02
   anchorIdx = WIFI_LIST_REC;            // устанавливаем в конец резервной зоны
   // ставим терминаторы в конце резервной зоны и всего буфера для корректной работы последующих strchr
-  gAnswer_buf[anchorIdx] = gAnswer_buf[GANSWER_BUF_SIZE - 1] = '\0'; gAnswer_idx = 0;
+  gAnswer_buf[anchorIdx] = gAnswer_buf[WIFI_LIST_LIM - 1] = '\0'; gAnswer_idx = 1;
   // 4. ДВУХЦИКЛОВОЕ СКАНИРОВАНИЕ ЭФИРА
   for (uint8_t k = 0; ((k < 2) && (anchorIdx)); k++) {
     int n = WiFi.scanNetworks(/*async=*/false, /*hidden=*/true);
     if (n > 0) {
-      if (!(gAnswer_idx)) gAnswer_idx = anchorIdx;  // инициализируем при первом успехе сканирования
+      if ((gAnswer_idx == 1)) gAnswer_idx = anchorIdx;  // инициализируем при первом успехе сканирования
       for (int i = 0; ((i < n) && (anchorIdx)); i++) {
         // получаем из Flash-памяти комбинированный префикс из таблицы сигналов sigTable
         int32_t rssi = WiFi.RSSI(i);    // качество сигнала
@@ -253,14 +253,14 @@ void scanWiFi() {
                       (const char*)pgm_read_ptr(&(sigTable[j].openNet));
         if (!(prefix)) continue;        // foolproof
         uint8_t ssidLen;
-        // сверяем с текущей сконфигурированной сетью по BSSID (если он сохранен в checkTimers())
+        // сверяем с текущей сконфигурированной сетью по BSSID (если он был сохранен в checkTimers())
         if ((hasConfig == 1) && (memcmp(WiFi.BSSID(i), cfg.wifi_bssid, 6) == 0)) {
           strcpy(ssid, cfg.wifi_ssid); ssidLen = strlen(ssid); hasConfig = 2; }
          else {
           // Получаем длину имени сети. Временный объект String создается и сразу уничтожается в этой строке.
           ssidLen = WiFi.SSID(i).length();
           // Проверяем границы: если имя сети пустое или длина превышает лимит — пропускаем
-          if (!ssidLen || (ssidLen >= STR_LEN_SHORT)) continue;
+          if (!ssidLen || (ssidLen > STR_LEN_SHORT)) continue;
           // Копируем имя сети. Временный объект String создается второй раз, .c_str() отдает байты, 
           // strncpy переносит их в svcBuf, и объект тут же уничтожается на точке с запятой.
           strncpy(ssid, WiFi.SSID(i).c_str(), ssidLen);
@@ -275,7 +275,7 @@ void scanWiFi() {
             gAnswer_buf[WIFI_PFX_LEN + ssidLen] = '\x02'; hasConfig = 3; }
           continue; }
         // Для остальных сетей - сначала проверка на переполнение буфера
-        if ((gAnswer_idx + ssidLen + (WIFI_PFX_LEN + 2)) >= WIFI_LIST_LIM) break;
+        if ((gAnswer_idx + ssidLen + WIFI_PFX_LEN + 2) >= WIFI_LIST_LIM) break;
         // Затем проверка на дубликаты Mesh (пропускаем резервную зону)
         // НАДЕЖНЫЙ КАСТОМНЫЙ ПАРСЕР ДУБЛИКАТОВ НА БАЗЕ STRNCMP И ЛИНЕЙНОГО ШАГА
         bool isDuplicate = true;
@@ -288,7 +288,7 @@ void scanWiFi() {
           if (isDuplicate) {
             anchorIdx = 0; break; }       // Защита: выходим полностью, если структура нарушена
           // Вычисляем длину записи, которая уже лежит в буфере
-          uint8_t recLen = endOfRecord - ((const char*)gAnswer_buf + anchorIdx) + 1;
+          uint8_t recLen = (endOfRecord + 1) - ((const char*)gAnswer_buf + anchorIdx);
           // Если длины предполагаемой новой записи и текущей из буфера совпадают — сравниваем SSID через strncmp
           isDuplicate = ((ssidLen + (WIFI_PFX_LEN + 1)) == recLen);
           if (isDuplicate)
@@ -303,13 +303,13 @@ void scanWiFi() {
                                 PSTR("%S%s""\x02"), prefix, ssid);
         } // for (int i = 0; (i < n); ++i)
       } // if (n > 0)
-    WiFi.scanDelete();                  // Очищаем кэш текущего круга перед следующим
+    WiFi.scanDelete();                    // Очищаем кэш текущего цикла перед следующим
     if (!(k)) delay(50);                  // Пауза между циклами сканирования для стабилизации АРУ приемника
     } // for k
   if (anchorIdx) {
     // маркируем, если был успешный цикл сканирования + на всякий случай терминируем строку
     gAnswer_buf[gAnswer_idx] = '\0'; anchorIdx = WIFI_LIST_LIM; }
-   else gAnswer_idx = 0;
+   else gAnswer_idx = 1;
 }
 
 void sta2ap(const char* msg) {
@@ -328,7 +328,7 @@ void sta2ap(const char* msg) {
     netQuePut(packet, -len);  // urgent HB
     netQueSend(); }
    else WiFi.mode(WIFI_STA);  // Гарантируем режим клиента для успешного сканирования
-  delay(50);
+  delay(200);
   webSocket.disconnect();     // Закрываем WS соединения
   wsMap = 0; socket.clGroup_ID = 0; // очищаем данные о подключенных WS клиентах
   WiFi.persistent(false);
