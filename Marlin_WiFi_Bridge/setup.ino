@@ -76,34 +76,25 @@ void handleGetConfigPage() {
     httpServer.send(404, PSTR("text/plain"), PSTR("Not Found")); return; }
   if (httpServer.hasArg("l")) {
     // Если есть GET-аргумент "l"
-    // Проверяем наличие списка сетей
-    if ((gAnswer_idx <= WIFI_PFX_LEN) || (gAnswer_idx > WIFI_LIST_LIM) || (anchorIdx != WIFI_LIST_LIM) || (gAnswer_buf[gAnswer_idx - 1] != '\x02'))
-      gAnswer_idx = 0;
-    // Нам нужно дописать параметры в конец готового списка сетей.
-    // Используем текущий gAnswer_idx как точку старта.
-    int len = gAnswer_idx; 
-    // Дописываем системный Anti-CSRF токен безопасности из глобального sessionID (он уже 100% готов)
-    len += snprintf_P((char*)gAnswer_buf + len, GANSWER_BUF_SIZE - len, PSTR("x""\x01""%u""\x02"), sessionID);
-    // Если конфигурация уже существует, дописываем остальные поля
-    if (cfg.magic == CONFIG_MAGIC) {
-      len += snprintf_P((char*)gAnswer_buf + len, GANSWER_BUF_SIZE - len, PSTR("s""\x01""%s""\x02"), cfg.wifi_ssid);
-      if (*cfg.mqtt_ip) {
-        len += snprintf_P((char*)gAnswer_buf + len, GANSWER_BUF_SIZE - len, PSTR("i""\x01""%s:%u""\x02""d""\x01""%s""\x02"), 
-                          cfg.mqtt_ip, cfg.mqtt_port, cfg.device_id); // Для MQTT - "IP:PORT" и device_ID всегда идут в паре
-        if (*cfg.mqtt_user) len += snprintf_P((char*)gAnswer_buf + len, GANSWER_BUF_SIZE - len, PSTR("u""\x01""%s""\x02"), cfg.mqtt_user);
-        if (*cfg.ha_prefix) len += snprintf_P((char*)gAnswer_buf + len, GANSWER_BUF_SIZE - len, PSTR("h""\x01""%s""\x02"), cfg.ha_prefix);
-      } }
-    len -= 1;  // исключаем из передачи ненужный '\x02' в конце буфера
-    // Отдаем весь буфер (Сети + Системные параметры в конце) в ТЕЛЕ ответа
-    httpServer.send(200, (const char*)PSTR("text/plain"), (const char*)gAnswer_buf, len);
-    return;
-    }
-  // Обычный первый запрос — выдаем саму сжатую Zopfli-страницу
-  // Говорим браузеру, что контент сжат с помощью GZIP
-  httpServer.sendHeader(F("Content-Encoding"), F("gzip"));
-  // Отправляем код страницы конфигурации напрямую из PROGMEM
-  httpServer.send(200, (const char*)PSTR("text/html"), (const char*)CONFIG_HTML, sizeof(CONFIG_HTML));
-  apTime = 900; // продлеваем до ~900 сек. интервал, выделенный для переконфигурации в режиме AP
+    // Проверяем валидность данных (Сети + Системные параметры в конце) в буфере
+    if ((gAnswer_idx > WIFI_PFX_LEN) && (anchorIdx == WIFI_LIST_LIM) && (gAnswer_buf[gAnswer_idx] == '\x02'))
+      // Отдаем весь буфер (без терминатора '\x02') в ТЕЛЕ ответа
+      httpServer.send(200, (const char*)PSTR("text/plain"), (const char*)gAnswer_buf, gAnswer_idx);
+     else {
+      // здесь по какой-то причине буфер невалиден и нужно передать клиенту хотя бы "секретный" токен
+      gAnswer_idx = 0; gAnswer_buf[gAnswer_idx++] = 'x'; gAnswer_buf[gAnswer_idx++] = '\x01';
+      ultoa(sessionID, &gAnswer_buf[gAnswer_idx], 10);  // запишется число и терминирующий '\0' в конце
+      // Отдаем буфер в сеть как классическую C-строку. Сервер сам найдет терминатор нуля под капотом.
+      // после этого остаётся (gAnswer_idx < WIFI_PFX_LEN), что обеспечит аналогичные действия при реконнекте
+      httpServer.send(200, (const char*)PSTR("text/plain"), (const char*)gAnswer_buf);
+    } }
+   else {
+    // Это обычный первый запрос — выдаем саму сжатую Zopfli-страницу
+    // Говорим браузеру, что контент сжат с помощью GZIP
+    httpServer.sendHeader(F("Content-Encoding"), F("gzip"));
+    // Отправляем код страницы конфигурации напрямую из PROGMEM
+    httpServer.send(200, (const char*)PSTR("text/html"), (const char*)CONFIG_HTML, sizeof(CONFIG_HTML));
+    apTime = 900; } // продлеваем до ~900 сек. интервал, выделенный для переконфигурации в режиме AP
 }
 
 // ПРИЕМ И ПАРСИНГ ДАННЫХ CONFIG (HTTP_POST)
@@ -225,9 +216,10 @@ void scanWiFi() {
   // Формируем список доступных WiFi сетей для передачи клиенту при конфигурации в режиме AP
   // Для хранения используем свободный при отключенном UART gAnswer_buf[8192]
   char* ssid = svcBuf;                  // сюда будем помещать получаемую строку SSID при сканировании
+  // 1. проверяем уровень полноты текущей конфигурации (0 == не сконфигурировано)
   int hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (cfg.wifi_bset));                     // 0|1 , если знаем "свой" BSSID
-  if (!(hasConfig)) hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (*cfg.wifi_ssid)) << 1; // 0|2 , если BSSID ещё не успели сохранить
-  // 3. ЗАБИВАЕМ РЕЗЕРВНУЮ ЗОНУ ПУСТЫШКАМИ "\x01\x02" ЧЕРЕЗ СКОРОСТНУЮ ЗАПИСЬ В LE UINT32_T
+  if (!(hasConfig)) hasConfig = !!((cfg.magic == CONFIG_MAGIC) && (*cfg.wifi_ssid)) << 1; // 0|2 , если знаем только SSID
+  // 2. ЗАБИВАЕМ РЕЗЕРВНУЮ ЗОНУ ПУСТЫШКАМИ "\x01\x02" ЧЕРЕЗ СКОРОСТНУЮ ЗАПИСЬ В LE UINT32_T
   // 11*2 штук по 2 байта = 44 байта.
   // сюда, в начало списка, будет помещена запись для текущей сконфигурированной сети
   // максимальная длина = 9 (префикс) + 32 (SSID) + 1 ('\x02') = 42 = WIFI_LIST_REC
@@ -236,17 +228,17 @@ void scanWiFi() {
     le_ptr[anchorIdx] = 0x02010201;     // В память ляжет 0x01, 0x02, 0x01, 0x02
   anchorIdx = WIFI_LIST_REC;            // устанавливаем в конец резервной зоны
   // ставим терминаторы в конце резервной зоны и всего буфера для корректной работы последующих strchr
-  gAnswer_buf[anchorIdx] = gAnswer_buf[WIFI_LIST_LIM - 1] = '\0'; gAnswer_idx = 1;
-  // 4. ДВУХЦИКЛОВОЕ СКАНИРОВАНИЕ ЭФИРА
+  gAnswer_buf[anchorIdx] = gAnswer_buf[WIFI_LIST_LIM - 1] = '\0'; gAnswer_idx = 0;
+  // 3. ДВУХЦИКЛОВОЕ СКАНИРОВАНИЕ ЭФИРА
   for (uint8_t k = 0; ((k < 2) && (anchorIdx)); k++) {
     int n = WiFi.scanNetworks(/*async=*/false, /*hidden=*/true);
     if (n > 0) {
-      if ((gAnswer_idx == 1)) gAnswer_idx = anchorIdx;  // инициализируем при первом успехе сканирования
+      if (!(gAnswer_idx)) gAnswer_idx = anchorIdx;  // инициализируем при первом успехе сканирования
       for (int i = 0; ((i < n) && (anchorIdx)); i++) {
         // получаем из Flash-памяти комбинированный префикс из таблицы сигналов sigTable
         int32_t rssi = WiFi.RSSI(i);    // качество сигнала
         const char *prefix = NULL;
-        for (uint8_t j = 0; ((j < 4) && !prefix); j++)
+        for (uint8_t j = 0; ((j < 4) && !(prefix)); j++)
           if (rssi > (int8_t)pgm_read_byte(&(sigTable[j].threshold)))
             prefix = (WiFi.encryptionType(i) != ENC_TYPE_NONE)?
                       (const char*)pgm_read_ptr(&(sigTable[j].secured)):
@@ -268,7 +260,7 @@ void scanWiFi() {
         ssid[ssidLen] = '\0';           // гарантируем терминатор для строки имени сети
         if ((hasConfig > 0) && !(strcmp(ssid, cfg.wifi_ssid))) {
           if (hasConfig == 2) {
-            // Если нашли текущую сконфигурированную сеть
+            // Если 1-й раз нашли SSID текущей сконфигурированной сети
             // Формируем строку ПРЕФИКС'\x01'SSID'\x02' в начале буфера
             // Она затрет ровно столько пустышек "\x01\x02", сколько займёт запись сети
             memcpy_P(gAnswer_buf, prefix, WIFI_PFX_LEN); memcpy(gAnswer_buf + WIFI_PFX_LEN, ssid, ssidLen);
@@ -297,8 +289,8 @@ void scanWiFi() {
           anchorIdx += recLen;
           } // while
         if (isDuplicate && (gAnswer_idx > WIFI_LIST_REC)) continue; // Уходим на следующую итерацию сканера эфира
-        // Дописываем новую уникальную сеть в конец буфера gAnswer_buf
-        gAnswer_idx += snprintf_P((char*)gAnswer_buf + gAnswer_idx, 
+        // если нет ошибок, дописываем новую уникальную сеть в конец буфера gAnswer_buf
+        if (anchorIdx) gAnswer_idx += snprintf_P((char*)gAnswer_buf + gAnswer_idx, 
                                 WIFI_LIST_LIM - gAnswer_idx,
                                 PSTR("%S%s""\x02"), prefix, ssid);
         } // for (int i = 0; (i < n); ++i)
@@ -306,10 +298,21 @@ void scanWiFi() {
     WiFi.scanDelete();                    // Очищаем кэш текущего цикла перед следующим
     if (!(k)) delay(50);                  // Пауза между циклами сканирования для стабилизации АРУ приемника
     } // for k
-  if (anchorIdx) {
-    // маркируем, если был успешный цикл сканирования + на всякий случай терминируем строку
-    gAnswer_buf[gAnswer_idx] = '\0'; anchorIdx = WIFI_LIST_LIM; }
-   else gAnswer_idx = 1;
+  if (anchorIdx) anchorIdx = WIFI_LIST_LIM; // ставим флаг отсутствия ошибок сканирования
+  // 4. Нам нужно дописать параметры конфигурации в конец готового списка сетей.
+  // Используем текущий gAnswer_idx как точку старта (gAnswer_idx == 0, если список пустой)
+  // Дописываем системный Anti-CSRF токен безопасности из глобального sessionID (он уже 100% готов)
+  gAnswer_idx += snprintf_P(gAnswer_buf + gAnswer_idx, GANSWER_BUF_SIZE - gAnswer_idx, PSTR("x""\x01""%u""\x02"), sessionID);
+  // Если конфигурация уже существует, дописываем остальные поля
+  if (cfg.magic == CONFIG_MAGIC) {
+    gAnswer_idx += snprintf_P(gAnswer_buf + gAnswer_idx, GANSWER_BUF_SIZE - gAnswer_idx, PSTR("s""\x01""%s""\x02"), cfg.wifi_ssid);
+    if (*cfg.mqtt_ip) {
+      gAnswer_idx += snprintf_P(gAnswer_buf + gAnswer_idx, GANSWER_BUF_SIZE - gAnswer_idx, PSTR("i""\x01""%s:%u""\x02""d""\x01""%s""\x02"), 
+                        cfg.mqtt_ip, cfg.mqtt_port, cfg.device_id); // Для MQTT - "IP:PORT" и device_ID всегда идут в паре
+      if (*cfg.mqtt_user) gAnswer_idx += snprintf_P(gAnswer_buf + gAnswer_idx, GANSWER_BUF_SIZE - gAnswer_idx, PSTR("u""\x01""%s""\x02"), cfg.mqtt_user);
+      if (*cfg.ha_prefix) gAnswer_idx += snprintf_P(gAnswer_buf + gAnswer_idx, GANSWER_BUF_SIZE - gAnswer_idx, PSTR("h""\x01""%s""\x02"), cfg.ha_prefix);
+    } }
+  gAnswer_idx -= 1;                       // gAnswer_buf[gAnswer_idx] == '\x02'
 }
 
 void sta2ap(const char* msg) {
@@ -325,13 +328,14 @@ void sta2ap(const char* msg) {
                         sessionID, HB_WAIT, SID_SYSTEM,  // сбрасываем текущего активиста
                         ((ctrl & CLIENT_LOG) >> 4));
     len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("%S"), msg);
-    netQuePut(packet, -len);  // urgent HB
+    netQuePut(packet, -len);  // urgent HB для всех WS клиентов
     netQueSend(); }
-   else WiFi.mode(WIFI_STA);  // Гарантируем режим клиента для успешного сканирования
+   else                       // если WiFi коннект отсутствовал
+    WiFi.mode(WIFI_STA);      // гарантируем нужный режим для успешного сканирования
   delay(200);
   webSocket.disconnect();     // Закрываем WS соединения
   wsMap = 0; socket.clGroup_ID = 0; // очищаем данные о подключенных WS клиентах
-  WiFi.persistent(false);
+  //WiFi.persistent(false);   deprecated since esp8266 core 3.x.x
   delay(1);
   while (WiFi.status() == WL_CONNECTED) {
     WiFi.disconnect();        // Только разрываем связь с роутером
@@ -360,7 +364,8 @@ void handleGetIcon() {
   httpServer.send(200, PSTR("image/svg+xml"),
                         (WiFi.getMode() == WIFI_AP)?
                           (PSTR("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
-                                "<text x='50' y='55' font-size='85' text-anchor='middle' dominant-baseline='central'>⚙️</text></svg>")):
+                                "<text x='50' y='55' font-size='85' text-anchor='middle' dominant-baseline='central'>⚙️</text>"
+                                "</svg>")):
                           // здесь отдаем иконку экструдера (mdi:printer-3d-nozzle)
                           (PSTR("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='Purple'>"
                                   "<path d='M7,2H17V8H19V13H16.5L13,17H11L7.5,13H5V8H7V2M10,22H2V20H10A1,1 0 0,0 11,19V18H13V19A3,3 0 0,1 10,22Z'/>"
@@ -406,8 +411,8 @@ void syncMarlin() {
 
 void setup() {
   //system_update_cpu_freq(160);
-  WiFi.persistent(false); 
-  WiFi.setAutoConnect(false);                 // На случай, если в памяти модуля есть чужие "хвосты" 
+  //WiFi.persistent(false);                   deprecated since esp8266 core 3.x.x
+  //WiFi.setAutoConnect(false);               deprecated since esp8266  core 3.x.x
   // Получаем информацию о последнем сбросе
   // и помещаем в в конец буфера gAnswer_buf, где она сохранится до первого вызова init_chunks()
   char* buf = &gAnswer_buf[GANSWER_BUF_SIZE - sizeof(packet)];  // до первого запуска передачи файла размер gAnswer_buf -= sizeof(packet)

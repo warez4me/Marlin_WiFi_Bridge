@@ -190,7 +190,7 @@ void wifiConnect(bool init) {
       if (net_err++ >= 10) {          // ~60 сек. не можем подключиться к WiFi сети
         sta2ap();                     // переключаем WiFi, поднимаем точку доступа (AP) на 120 сек.
         return; }                     // даем возможность переконфигурации параметров подключения к сети
-      WiFi.persistent(false);
+      //WiFi.persistent(false);       deprecated since esp8266 core 3.x.x
       delay(1);
       WiFi.disconnect();              // отключаем WiFi модуль, переходим в исходное состояние
       if (mqttSockData.sockState != MQTT_SOCKET_DISCONNECTED)

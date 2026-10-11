@@ -14,6 +14,6 @@
 
 #pragma once
 
-const char _VERSION_[] PROGMEM = "v.1.5.0";
+const char _VERSION_[] PROGMEM = "v.1.5.1";
 // Объединяем системные макросы в единую константу времени сборки
 const char COMPILE_TIMESTAMP[] PROGMEM = __DATE__ " " __TIME__;

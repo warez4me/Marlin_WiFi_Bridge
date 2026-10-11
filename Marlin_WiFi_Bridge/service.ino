@@ -214,6 +214,7 @@ bool myBridgeCmd(char* msg, size_t length) {
     }
    else memcpy((uint8_t*)cBuf, (uint8_t*)msg, length);
   static strMem_t cmdMem = {0, 0, 0};
+  int cmdRepeat = confirmStr(&cmdMem, msg, length); // -1 : новая, 0 : повтор через > 20 сек, 1 : повтор через <= 20 сек
   msg = cBuf;
   size_t len;
   char* cmdMsg = msg + 1;
@@ -228,6 +229,7 @@ bool myBridgeCmd(char* msg, size_t length) {
   if ((myID >= ID_CONFIG) && (myID <= ID_DALL))   // команды управления логированием вида (x)N
     // cmdMsg указывает на 1-й символ параметра сразу после ')'
     hasNum = getNum(&numVal, &cmdMsg, 0xFFFFFFFF, true);  // читаем числовой параметр, если он есть
+  if ((myID != ID_FINDEX) && (myID != ID_LIST) && (*cmdMsg)) return false;  // если в строке остались символы, кроме команд навигации и удаления
   static bool fListMem = false;
   bool fListCmd = ((myID == ID_LIST) || (myID == ID_PGUP) || (myID == ID_PGDOWN));
   if (fListCmd) fListScanned = FLIST_NOT_SCANNED;
@@ -352,6 +354,7 @@ bool myBridgeCmd(char* msg, size_t length) {
       // "(N)-.", удаление всех файлов в папке с указанным файлом (=0x002E2D29)
       numVal = 0;                                       // все (4) нули в "строке" сравнения
       if (cmdMsg == (msg + length - 2)) {
+        // "(N)."
         numVal = (cmdMsg[0] | (cmdMsg[1] << 8)) ;       // делаем из строки число (LE) для быстрого сравнения
         if (numVal != 0x2E29) {                         // ")."
           res = false; break; }                         // для такой length допустимо только 0x2E29
@@ -375,10 +378,11 @@ bool myBridgeCmd(char* msg, size_t length) {
         break; }
       if (cmdMsg != (msg + length - 3)) {
         res = false; break; }                           // допустимы варианты только "(N)xx"
+      // "(N)-!", "(N)-*", "(N)-."
       numVal = (cmdMsg[0] | (cmdMsg[1] << 8) | (cmdMsg[2] << 16)) ; // делаем из строки число (LE) для быстрого сравнения
       if ((numVal != 0x00212D29) && (numVal != 0x002A2D29) && (numVal != 0x002E2D29)) {
         res = false; break; }                           // ввод не соответствует ни одному варианту - возврат
-      if (confirmStr(&cmdMem, msg, length) <= 0) {      // выполняем удаление только после быстрого (<=15 сек) повторного ввода
+      if (cmdRepeat <= 0) {                             // выполняем удаление только после быстрого (<=20 сек) повторного ввода команды
         netQuePut(NULL, 0, (char*)PSTR("L:Repeat command to delete file(s).\n"), socket.clWS_ID);
         break; }                                        // первый ввод - выходим
       struct {
@@ -619,14 +623,14 @@ bool myBridgeCmd(char* msg, size_t length) {
       netQuePut_cid(packet, len, socket.clWS_ID);
       break; }
     case ID_REBOOT:
-      if (confirmStr(&cmdMem, msg, length) <= 0) {  // отрабатываем команду только после быстрого (<=15 сек) повторного ввода
+      if (cmdRepeat <= 0) {                         // отрабатываем команду только после быстрого (<=20 сек) повторного ввода
         netQuePut(NULL, 0, (char*)PSTR("L:Repeat command for reboot.\n"), socket.clWS_ID);
         break;
         }
       doReboot();
       break;
     case ID_CONFIG: {
-      if (confirmStr(&cmdMem, msg, length) <= 0) {  // отрабатываем команду только после быстрого (<=15 сек) повторного ввода
+      if (cmdRepeat <= 0) {                         // отрабатываем команду только после быстрого (<=20 сек) повторного ввода
         strcpy_P((char*)packet, (hasNum && (numVal))? PSTR("factory reset.\n"): PSTR("config mode.\n"));
         netQuePut(packet, strlen((char*)packet), (char*)PSTR("L:Repeat command for "), socket.clWS_ID);
         break;
@@ -646,7 +650,7 @@ bool myBridgeCmd(char* msg, size_t length) {
       sta2ap(apMsg);              // переключаемся в режим WIFI_AP, из программы не выходим
       break; }
     case ID_OTA: {
-      if (confirmStr(&cmdMem, msg, length) <= 0) {  // выполняем переключение только после быстрого (<=15 сек) повторного ввода
+      if (cmdRepeat <= 0) {                         // выполняем переключение только после быстрого (<=20 сек) повторного ввода
         netQuePut(NULL, 0, (char*)PSTR("L:Repeat command for OTA mode.\n"), socket.clWS_ID);
         break; }                                    // первый ввод - выходим
       if (!setOTA()) break;                         // проверяем размеры файла/памяти, даем приглашение
@@ -769,6 +773,9 @@ void sd_erase() {
   if (!(sdFile.fInfo)) errCode |= ERR_MEMORY_ERR;
   // начинаем от текущего значения указателя sdFile.fInfo
   while ((sdFile.fInfo < &gAnswer_buf[anchorIdx]) && (sdFile.fIdx <= sdFile.maxIdx) && (errCode == ERR_NO_ERRORS)) {
+    // перебираем записи о файлах, пока не попадется помеченная для удаления,
+    // после чего выдаём в Марлин соответствующую команду и возвращаемся в общий loop() в ожидании ответа от Марлин.
+    // Затем снова попадём в этот цикл и т.д. до окончания просмотра всего списка.
     if (ctrl & SERV_LOG) {                      // печать статистики удалений при отладке
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR(
                         "L:del: fIdx %u fMax %u\n"
@@ -806,7 +813,7 @@ void sd_erase() {
         return;                             // выходим из цикла до прихода завершающего последовательность "ОК" от марлин
       default:
         sdFile.fInfo += (strlen(sdFile.fInfo) + 1); sdFile.fIdx += 1;
-        continue;                           // итерация
+        continue;                           // итерация (достижение целевого количества удалений контролируется getMarlin())
     } }
   if (sdFile.fIdx > sdFile.maxIdx) {        // был просмотрен весь список
     len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%u/%u file(s) removed.\n"),
@@ -817,12 +824,10 @@ void sd_erase() {
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%u bytes freed.\n"), sdFile.sizeCount);
      else
       len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%u Kb freed.\n"), (sdFile.sizeCount >> 10));
-    if (ctrl & (UART_LOG | SERV_LOG)) {
-      netQuePut(packet, len);
-      len = snprintf_P((char*)packet, NET_DATA_MAX, PSTR("L:%d/%d placeholder(s) created.\n"),
+    if (ctrl & (UART_LOG | SERV_LOG))
+      len += snprintf_P((char*)packet + len, NET_DATA_MAX - len, PSTR("L:%d/%d placeholder(s) created.\n"),
                                                       (sdFile.keepCount & 0xFFFF),
                                                       (sdFile.keepCount >> 16));
-      }
     netQuePut(packet, len);
     M20_Timer = 4;  // через ~500 мсек просканировать SD на наличие активного файла в рабочей папке и
                     // в случае успеха - перейти к bridgeState == SYS_PRE_PRINT
